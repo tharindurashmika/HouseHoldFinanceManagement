@@ -1,0 +1,773 @@
+import React, { useState, useEffect } from 'react';
+import { X, Plus, Trash2, Split, ArrowRightLeft, TrendingUp, TrendingDown } from 'lucide-react';
+import { api } from '../api';
+import { addMoney, formatLKR, mulMoney, toMoneyString } from '../../shared/decimal';
+import type {
+  Account,
+  Category,
+  HouseholdMemberScope,
+  PaymentMethod,
+  Transaction,
+  TransactionType,
+  User,
+} from '../../shared/types';
+
+interface TransactionModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSaved: () => void;
+  categories: Category[];
+  accounts: Account[];
+  members: User[];
+  activeUserId: string;
+  initialType?: TransactionType;
+  editingTransaction?: Transaction | null;
+}
+
+export const TransactionModal: React.FC<TransactionModalProps> = ({
+  isOpen,
+  onClose,
+  onSaved,
+  categories,
+  accounts,
+  members,
+  activeUserId,
+  initialType = 'EXPENSE',
+  editingTransaction = null,
+}) => {
+  const [transactionType, setTransactionType] = useState<TransactionType>(initialType);
+  const [transactionDate, setTransactionDate] = useState<string>('2026-11-03');
+  const [description, setDescription] = useState<string>('');
+  const [categoryId, setCategoryId] = useState<string>('');
+  const [subcategoryId, setSubcategoryId] = useState<string>('');
+  const [originalCurrency, setOriginalCurrency] = useState<string>('LKR');
+  const [originalAmount, setOriginalAmount] = useState<string>('');
+  const [exchangeRate, setExchangeRate] = useState<string>('1');
+  const [actualLkrAmount, setActualLkrAmount] = useState<string>('');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('DEBIT_CARD');
+  const [sourceAccountId, setSourceAccountId] = useState<string>('');
+  const [destinationAccountId, setDestinationAccountId] = useState<string>('');
+  const [paidOrReceivedByUserId, setPaidOrReceivedByUserId] = useState<string>(activeUserId);
+  const [householdMemberScope, setHouseholdMemberScope] = useState<HouseholdMemberScope>('SHARED');
+  const [fundingSource, setFundingSource] = useState<string>('REGULAR_INCOME');
+  const [isEssential, setIsEssential] = useState<boolean>(true);
+  const [isFixed, setIsFixed] = useState<boolean>(false);
+  const [utilityStart, setUtilityStart] = useState<string>('');
+  const [utilityEnd, setUtilityEnd] = useState<string>('');
+  const [notes, setNotes] = useState<string>('');
+  const [items, setItems] = useState<
+    Array<{ subcategoryId: string; itemName: string; quantity: string; amountLkr: string }>
+  >([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const filteredCategories = categories.filter((c) =>
+    transactionType === 'INCOME' ? c.type === 'INCOME' : c.type === 'EXPENSE'
+  );
+  const selectedCategory = categories.find((c) => c.id === categoryId);
+  const subcategories = selectedCategory?.subcategories || [];
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setError(null);
+
+    if (editingTransaction) {
+      setTransactionType(editingTransaction.transactionType);
+      setTransactionDate(editingTransaction.transactionDate);
+      setDescription(editingTransaction.description);
+      setCategoryId(editingTransaction.categoryId || '');
+      setSubcategoryId(editingTransaction.subcategoryId || '');
+      setOriginalCurrency(editingTransaction.originalCurrency || 'LKR');
+      setOriginalAmount(editingTransaction.originalAmount);
+      setExchangeRate(editingTransaction.exchangeRate || '1');
+      setActualLkrAmount(editingTransaction.actualLkrAmount);
+      setPaymentMethod(editingTransaction.paymentMethod);
+      setSourceAccountId(editingTransaction.sourceAccountId);
+      setDestinationAccountId(editingTransaction.destinationAccountId || '');
+      setPaidOrReceivedByUserId(editingTransaction.paidOrReceivedByUserId);
+      setHouseholdMemberScope(editingTransaction.householdMemberScope);
+      setFundingSource(editingTransaction.fundingSource || 'REGULAR_INCOME');
+      setIsEssential(editingTransaction.isEssential);
+      setIsFixed(editingTransaction.isFixed);
+      setUtilityStart(editingTransaction.utilityBillingPeriodStart || '');
+      setUtilityEnd(editingTransaction.utilityBillingPeriodEnd || '');
+      setNotes(editingTransaction.notes || '');
+      setItems(
+        (editingTransaction.items || []).map((i) => ({
+          subcategoryId: i.subcategoryId || '',
+          itemName: i.itemName,
+          quantity: i.quantity || '1',
+          amountLkr: i.amountLkr,
+        }))
+      );
+    } else {
+      setTransactionType(initialType);
+      setTransactionDate('2026-11-03');
+      setDescription('');
+      const defCat = categories.find((c) =>
+        initialType === 'INCOME' ? c.type === 'INCOME' : c.type === 'EXPENSE'
+      );
+      setCategoryId(defCat?.id || '');
+      setSubcategoryId(defCat?.subcategories?.[0]?.id || '');
+      setOriginalCurrency('LKR');
+      setOriginalAmount('');
+      setExchangeRate('1');
+      setActualLkrAmount('');
+      setPaymentMethod(initialType === 'INCOME' ? 'BANK_TRANSFER' : 'DEBIT_CARD');
+      setSourceAccountId(accounts[0]?.id || '');
+      setDestinationAccountId(accounts[1]?.id || '');
+      setPaidOrReceivedByUserId(activeUserId || members[0]?.id || '');
+      setHouseholdMemberScope(initialType === 'INCOME' ? 'HUSBAND' : 'SHARED');
+      setFundingSource('REGULAR_INCOME');
+      setIsEssential(defCat?.defaultEssentiality ?? true);
+      setIsFixed(defCat?.isFixedDefault ?? false);
+      setUtilityStart('');
+      setUtilityEnd('');
+      setNotes('');
+      setItems([]);
+    }
+  }, [isOpen, editingTransaction, initialType, categories, accounts, activeUserId, members]);
+
+  const handleCategoryChange = (newCatId: string) => {
+    setCategoryId(newCatId);
+    const cat = categories.find((c) => c.id === newCatId);
+    if (cat) {
+      setSubcategoryId(cat.subcategories?.[0]?.id || '');
+      setIsEssential(cat.defaultEssentiality);
+      setIsFixed(cat.isFixedDefault);
+    } else {
+      setSubcategoryId('');
+    }
+  };
+
+  const handleOriginalAmountChange = (val: string) => {
+    setOriginalAmount(val);
+    if (originalCurrency === 'LKR') {
+      setActualLkrAmount(val);
+    } else if (val && exchangeRate) {
+      try {
+        setActualLkrAmount(mulMoney(val, exchangeRate));
+      } catch {
+        // ignore partial typing
+      }
+    }
+  };
+
+  const handleAddSplitItem = () => {
+    setItems((prev) => [
+      ...prev,
+      {
+        subcategoryId: subcategories[0]?.id || '',
+        itemName: '',
+        quantity: '1',
+        amountLkr: '',
+      },
+    ]);
+  };
+
+  const handleSplitItemsSumToTotal = () => {
+    if (items.length === 0) return;
+    const sum = addMoney(...items.map((i) => i.amountLkr || '0'));
+    setOriginalCurrency('LKR');
+    setOriginalAmount(sum);
+    setActualLkrAmount(sum);
+  };
+
+  if (!isOpen) return null;
+
+  const isUtilityCategory =
+    selectedCategory?.name.toLowerCase().includes('utility') || false;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSubmitting(true);
+
+    try {
+      const payload = {
+        transactionDate,
+        transactionType,
+        description,
+        categoryId: transactionType === 'TRANSFER' ? null : categoryId || null,
+        subcategoryId: transactionType === 'TRANSFER' ? null : subcategoryId || null,
+        originalAmount: originalCurrency === 'LKR' ? actualLkrAmount || originalAmount : originalAmount,
+        originalCurrency,
+        exchangeRate: originalCurrency === 'LKR' ? '1' : exchangeRate || '1',
+        actualLkrAmount: actualLkrAmount || originalAmount,
+        paymentMethod,
+        sourceAccountId,
+        destinationAccountId: transactionType === 'TRANSFER' ? destinationAccountId : null,
+        paidOrReceivedByUserId,
+        recordedByUserId: activeUserId,
+        householdMemberScope,
+        fundingSource,
+        isEssential,
+        isFixed,
+        utilityBillingPeriodStart: utilityStart || null,
+        utilityBillingPeriodEnd: utilityEnd || null,
+        notes: notes || null,
+        items: items
+          .filter((i) => i.itemName.trim() && Number(i.amountLkr) > 0)
+          .map((i) => ({
+            subcategoryId: i.subcategoryId || null,
+            itemName: i.itemName.trim(),
+            quantity: i.quantity || '1',
+            amountLkr: toMoneyString(i.amountLkr),
+          })),
+      };
+
+      if (editingTransaction) {
+        await api.updateTransaction(editingTransaction.id, payload);
+      } else {
+        await api.createTransaction(payload);
+      }
+      onSaved();
+      onClose();
+    } catch (err: any) {
+      setError(err.message || 'Failed to save transaction');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-y-auto">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden my-8">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800">
+          <div>
+            <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+              {editingTransaction ? 'Edit Financial Transaction' : 'Record Financial Transaction'}
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              All amounts are stored with decimal precision in Sri Lankan Rupees (LKR)
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[82vh] overflow-y-auto">
+          {error && (
+            <div className="p-3 rounded-lg bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-sm">
+              {error}
+            </div>
+          )}
+
+          {/* Transaction Type Selector */}
+          <div className="grid grid-cols-3 gap-2 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl">
+            {(
+              [
+                { type: 'EXPENSE', label: 'Expense', icon: TrendingDown, activeCls: 'bg-rose-600 text-white' },
+                { type: 'INCOME', label: 'Income', icon: TrendingUp, activeCls: 'bg-emerald-600 text-white' },
+                { type: 'TRANSFER', label: 'Internal Transfer', icon: ArrowRightLeft, activeCls: 'bg-blue-600 text-white' },
+              ] as const
+            ).map((tab) => {
+              const Icon = tab.icon;
+              const active = transactionType === tab.type;
+              return (
+                <button
+                  key={tab.type}
+                  type="button"
+                  onClick={() => {
+                    setTransactionType(tab.type);
+                    if (tab.type !== 'TRANSFER') {
+                      const firstCat = categories.find((c) => c.type === tab.type);
+                      if (firstCat) handleCategoryChange(firstCat.id);
+                    }
+                  }}
+                  className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm font-medium transition ${
+                    active
+                      ? `${tab.activeCls} shadow-sm`
+                      : 'text-slate-600 dark:text-slate-300 hover:bg-white/50 dark:hover:bg-slate-700/50'
+                  }`}
+                >
+                  <Icon className="w-4 h-4" />
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {transactionType === 'TRANSFER' && (
+            <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 text-xs text-blue-800 dark:text-blue-200">
+              <strong>Rule 2 (No Double Counting):</strong> Moving money between household accounts or settling a Credit Card bill from a Bank Account is recorded as an Internal Transfer and is never double-counted as income or expense.
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
+                Transaction Date *
+              </label>
+              <input
+                type="date"
+                required
+                value={transactionDate}
+                onChange={(e) => setTransactionDate(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
+                {transactionType === 'INCOME' ? 'Received By Member *' : 'Paid By Member *'}
+              </label>
+              <select
+                required
+                value={paidOrReceivedByUserId}
+                onChange={(e) => setPaidOrReceivedByUserId(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
+              >
+                {members.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.displayName} ({m.memberRole})
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
+              Description *
+            </label>
+            <input
+              type="text"
+              required
+              placeholder={
+                transactionType === 'EXPENSE'
+                  ? 'e.g., Keells Super Weekly Groceries, CEB Electricity Bill...'
+                  : transactionType === 'INCOME'
+                    ? 'e.g., Monthly Salary - November 2026...'
+                    : 'e.g., Commercial Bank Credit Card Statement Settlement...'
+              }
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
+            />
+          </div>
+
+          {/* Category & Subcategory (for Income / Expense) */}
+          {transactionType !== 'TRANSFER' && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
+                  Main Category *
+                </label>
+                <select
+                  required
+                  value={categoryId}
+                  onChange={(e) => handleCategoryChange(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
+                >
+                  <option value="">Select Main Category...</option>
+                  {filteredCategories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
+                  Subcategory
+                </label>
+                <select
+                  value={subcategoryId}
+                  onChange={(e) => setSubcategoryId(e.target.value)}
+                  disabled={subcategories.length === 0}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm disabled:opacity-50"
+                >
+                  <option value="">General / Unspecified</option>
+                  {subcategories.map((sc) => (
+                    <option key={sc.id} value={sc.id}>
+                      {sc.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
+
+          {/* Currency & Amount */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
+                Currency
+              </label>
+              <select
+                value={originalCurrency}
+                onChange={(e) => {
+                  const curr = e.target.value;
+                  setOriginalCurrency(curr);
+                  if (curr === 'LKR') {
+                    setExchangeRate('1');
+                    if (originalAmount) setActualLkrAmount(originalAmount);
+                  } else if (curr === 'USD' && exchangeRate === '1') {
+                    setExchangeRate('305');
+                  }
+                }}
+                className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-mono"
+              >
+                <option value="LKR">LKR (Sri Lankan Rupee)</option>
+                <option value="USD">USD (US Dollar)</option>
+                <option value="EUR">EUR (Euro)</option>
+                <option value="GBP">GBP (British Pound)</option>
+                <option value="AUD">AUD (Australian Dollar)</option>
+              </select>
+            </div>
+
+            {originalCurrency !== 'LKR' ? (
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
+                  Original ({originalCurrency}) Amount *
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  required
+                  value={originalAmount}
+                  onChange={(e) => handleOriginalAmountChange(e.target.value)}
+                  placeholder="20.00"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-mono"
+                />
+              </div>
+            ) : (
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
+                  Amount (LKR) *
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  required
+                  value={actualLkrAmount}
+                  onChange={(e) => {
+                    setActualLkrAmount(e.target.value);
+                    setOriginalAmount(e.target.value);
+                  }}
+                  placeholder="15000.00"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-base font-bold font-mono"
+                />
+              </div>
+            )}
+
+            {originalCurrency !== 'LKR' && (
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
+                  Actual LKR Charged *
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  required
+                  value={actualLkrAmount}
+                  onChange={(e) => setActualLkrAmount(e.target.value)}
+                  placeholder="6100.00"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-bold font-mono"
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Accounts & Payment Method */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
+                {transactionType === 'INCOME'
+                  ? 'Deposit Into Account *'
+                  : transactionType === 'TRANSFER'
+                    ? 'From Source Account *'
+                    : 'Paid From Account *'}
+              </label>
+              <select
+                required
+                value={sourceAccountId}
+                onChange={(e) => setSourceAccountId(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
+              >
+                {accounts.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name} ({a.accountType === 'CREDIT_CARD' ? `Owed: ${formatLKR(a.currentBalance)}` : formatLKR(a.currentBalance)})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {transactionType === 'TRANSFER' ? (
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
+                  To Destination Account *
+                </label>
+                <select
+                  required
+                  value={destinationAccountId}
+                  onChange={(e) => setDestinationAccountId(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
+                >
+                  {accounts.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name} ({a.accountType === 'CREDIT_CARD' ? `Owed: ${formatLKR(a.currentBalance)}` : formatLKR(a.currentBalance)})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
+                  Payment Method *
+                </label>
+                <select
+                  value={paymentMethod}
+                  onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
+                >
+                  <option value="DEBIT_CARD">Debit Card</option>
+                  <option value="CREDIT_CARD">Credit Card</option>
+                  <option value="BANK_TRANSFER">Bank Transfer / Online Banking</option>
+                  <option value="CASH">Cash</option>
+                  <option value="DIRECT_DEBIT">Direct Debit / Standing Order</option>
+                  <option value="DIGITAL_WALLET">Digital Wallet / QR</option>
+                  <option value="OTHER">Other</option>
+                </select>
+              </div>
+            )}
+          </div>
+
+          {/* Classification & Funding Source ("Api wiyadam karana salli kohenda enne") */}
+          {transactionType !== 'TRANSFER' && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
+              <div>
+                <label className="block text-xs font-semibold text-blue-700 dark:text-blue-300 mb-1">
+                  Money Source (Salli Kohenda Awe / Wiyadam Kale?) *
+                </label>
+                <select
+                  value={fundingSource}
+                  onChange={(e) => setFundingSource(e.target.value)}
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-blue-300 dark:border-blue-700 bg-white dark:bg-slate-800 text-xs font-medium"
+                >
+                  <option value="REGULAR_INCOME">
+                    1. Regular Monthly Salary (Tharindu 10-12th / Wife Basic)
+                  </option>
+                  <option value="OVERTIME_INCOME">
+                    2. Wife Overtime (OT ~100k on 24-26th)
+                  </option>
+                  <option value="BORROWED_FRIENDS_PARENTS">
+                    3. Borrowed from Friends / Parents (Yaluwangen / Parentlagen)
+                  </option>
+                  <option value="PREVIOUS_SAVINGS">
+                    4. From Previously Saved Money (Ituru Karapu Salli Walin)
+                  </option>
+                  <option value="OTHER">Other Source</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-500 mb-1">
+                  Household Scope & Classification
+                </label>
+                <div className="flex items-center gap-3">
+                  <select
+                    value={householdMemberScope}
+                    onChange={(e) => setHouseholdMemberScope(e.target.value as HouseholdMemberScope)}
+                    className="px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs"
+                  >
+                    <option value="SHARED">Shared Household</option>
+                    <option value="HUSBAND">Tharindu Personal</option>
+                    <option value="WIFE">Wife (Sudu) Personal</option>
+                  </select>
+
+                  <label className="flex items-center gap-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isEssential}
+                      onChange={(e) => setIsEssential(e.target.checked)}
+                      className="rounded border-slate-300 text-blue-600"
+                    />
+                    Essential
+                  </label>
+
+                  <label className="flex items-center gap-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isFixed}
+                      onChange={(e) => setIsFixed(e.target.checked)}
+                      className="rounded border-slate-300 text-blue-600"
+                    />
+                    Fixed
+                  </label>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Optional Utility Billing Period */}
+          {transactionType === 'EXPENSE' && isUtilityCategory && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-3 rounded-xl bg-amber-50/60 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60">
+              <div>
+                <label className="block text-xs font-semibold text-amber-800 dark:text-amber-300 mb-1">
+                  Utility Billing Period Start
+                </label>
+                <input
+                  type="date"
+                  value={utilityStart}
+                  onChange={(e) => setUtilityStart(e.target.value)}
+                  className="w-full px-3 py-1.5 rounded border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-800 text-xs"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-amber-800 dark:text-amber-300 mb-1">
+                  Utility Billing Period End
+                </label>
+                <input
+                  type="date"
+                  value={utilityEnd}
+                  onChange={(e) => setUtilityEnd(e.target.value)}
+                  className="w-full px-3 py-1.5 rounded border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-800 text-xs"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Multi-Item Split Grocery Receipt Support (Section 5E) */}
+          {transactionType === 'EXPENSE' && subcategories.length > 0 && (
+            <div className="border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <Split className="w-4 h-4 text-blue-500" />
+                  <span>Itemized Subcategory Breakdown (Optional — e.g., Supermarket Receipt)</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {items.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleSplitItemsSumToTotal}
+                      className="text-xs px-2.5 py-1 rounded bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100"
+                    >
+                      Use Sum as Total
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleAddSplitItem}
+                    className="flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-300 hover:bg-blue-100"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Add Item Split
+                  </button>
+                </div>
+              </div>
+
+              {items.length > 0 && (
+                <div className="space-y-2">
+                  {items.map((item, idx) => (
+                    <div key={idx} className="grid grid-cols-12 gap-2 items-center">
+                      <div className="col-span-4">
+                        <select
+                          value={item.subcategoryId}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setItems((prev) =>
+                              prev.map((it, i) => (i === idx ? { ...it, subcategoryId: val } : it))
+                            );
+                          }}
+                          className="w-full px-2 py-1.5 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs"
+                        >
+                          {subcategories.map((sc) => (
+                            <option key={sc.id} value={sc.id}>
+                              {sc.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="col-span-4">
+                        <input
+                          type="text"
+                          placeholder="Item description (e.g. Fresh Chicken)"
+                          value={item.itemName}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setItems((prev) =>
+                              prev.map((it, i) => (i === idx ? { ...it, itemName: val } : it))
+                            );
+                          }}
+                          className="w-full px-2 py-1.5 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs"
+                        />
+                      </div>
+                      <div className="col-span-3">
+                        <input
+                          type="number"
+                          step="0.01"
+                          placeholder="LKR Amount"
+                          value={item.amountLkr}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setItems((prev) =>
+                              prev.map((it, i) => (i === idx ? { ...it, amountLkr: val } : it))
+                            );
+                          }}
+                          className="w-full px-2 py-1.5 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-mono"
+                        />
+                      </div>
+                      <div className="col-span-1 flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => setItems((prev) => prev.filter((_, i) => i !== idx))}
+                          className="p-1 text-slate-400 hover:text-rose-500"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
+              Notes (Optional)
+            </label>
+            <input
+              type="text"
+              placeholder="Additional notes, receipt reference, or remarks..."
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
+            />
+          </div>
+
+          <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200 dark:border-slate-800">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="px-5 py-2 rounded-lg text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-sm disabled:opacity-50"
+            >
+              {submitting
+                ? 'Saving...'
+                : editingTransaction
+                  ? 'Save Changes'
+                  : 'Record Transaction'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+

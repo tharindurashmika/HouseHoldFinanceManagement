@@ -1,0 +1,18 @@
+# Dependencies (installed automatically by GitHub Actions)
+node_modules/
+
+# Build output (generated automatically by GitHub Actions)
+dist/
+
+# Local environment secrets
+.env
+.env.local
+.env.*.local
+
+# OS & Editor files
+.DS_Store
+Thumbs.db
+*.log
+.vscode/
+.idea/
+

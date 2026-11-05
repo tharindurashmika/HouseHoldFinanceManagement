@@ -43,7 +43,7 @@ export const SavingsGoalsView: React.FC<SavingsGoalsViewProps> = ({
   useEffect(() => {
     Promise.all([
       api.getSavingsGoals(),
-      api.getDashboard('2026-10-01', '2026-10-31'),
+      api.getDashboard('2026-11-01', '2026-11-30'),
     ]).then(([gRes, dRes]) => {
       setGoals(gRes.goals);
       setCashFlowSurplus(dRes.financialOverview.cashFlowSurplusLkr);

@@ -22,8 +22,8 @@ const REPORT_TYPES = [
 
 export const ReportsView: React.FC<ReportsViewProps> = ({ categories, refreshTrigger }) => {
   const [reportType, setReportType] = useState<string>('MONTHLY_FINANCIAL');
-  const [startDate, setStartDate] = useState<string>('2026-10-01');
-  const [endDate, setEndDate] = useState<string>('2026-10-31');
+  const [startDate, setStartDate] = useState<string>('2026-11-01');
+  const [endDate, setEndDate] = useState<string>('2026-11-30');
   const [categoryId, setCategoryId] = useState<string>('');
   const [memberRole, setMemberRole] = useState<string>('');
   const [transactionType, setTransactionType] = useState<string>('');

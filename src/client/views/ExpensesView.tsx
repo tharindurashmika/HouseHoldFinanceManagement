@@ -18,7 +18,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
   onOpenEdit,
 }) => {
   const [expenses, setExpenses] = useState<Transaction[]>([]);
-  const [selectedMonth, setSelectedMonth] = useState<string>('2026-10');
+  const [selectedMonth, setSelectedMonth] = useState<string>('2026-11');
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('ALL');
 
   useEffect(() => {

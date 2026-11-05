@@ -66,13 +66,41 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const handleClearDemoData = async () => {
     if (
       !window.confirm(
-        'Clear all seeded Demo Transactions, Loans, Subscriptions, Budgets, and Savings Goals? Your Household members, Categories, and Bank Accounts will be kept.'
+        'Reset all Transactions and Account Balances to LKR 0.00 so you can start fresh from November? (Your 5 Bank Accounts, 5 Cards, 3 Loans, Subscriptions, Recurring Schedules, and Categories will be kept intact.)'
       )
     ) {
       return;
     }
     await api.clearDemoData();
     onRefresh();
+  };
+
+  const handleDownloadBackup = async () => {
+    const [txRes, loansRes, subsRes, recRes, goalsRes] = await Promise.all([
+      api.getTransactions({}),
+      api.getLoans(),
+      api.getSubscriptions(),
+      api.getRecurring(),
+      api.getSavingsGoals(),
+    ]);
+    const backup = {
+      exportedAt: new Date().toISOString(),
+      members,
+      categories,
+      accounts,
+      loans: loansRes.loans,
+      subscriptions: subsRes.subscriptions,
+      recurringSchedules: recRes.schedules,
+      savingsGoals: goalsRes.goals,
+      transactions: txRes.transactions,
+    };
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `household_finance_backup_${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const parentCategories = categories.filter((c) => c.type === catType);
@@ -355,18 +383,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          <a
-            href="/api/settings/backup"
-            download="household_finance_backup.json"
+          <button
+            type="button"
+            onClick={handleDownloadBackup}
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold"
           >
             <Download className="w-4 h-4" /> Download Backup (.json)
-          </a>
+          </button>
           <button
             onClick={handleClearDemoData}
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 text-xs font-semibold"
           >
-            <Trash2 className="w-4 h-4" /> Clear Demo Data
+            <Trash2 className="w-4 h-4" /> Reset All Records to 0
           </button>
         </div>
       </div>

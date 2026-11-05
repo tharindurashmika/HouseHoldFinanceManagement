@@ -16,7 +16,7 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
   onRefresh,
 }) => {
   const [year, setYear] = useState<number>(2026);
-  const [month, setMonth] = useState<number>(10);
+  const [month, setMonth] = useState<number>(11);
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [summary, setSummary] = useState<{
     totalBudgetedLkr: string;

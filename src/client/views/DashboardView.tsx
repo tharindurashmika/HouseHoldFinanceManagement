@@ -47,9 +47,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onNavigate,
 }) => {
   // Default to October 2026 (full month with rich activity) or switchable to Nov 2026 / Last 3 Months
-  const [preset, setPreset] = useState<FilterPreset>('PREV_MONTH');
-  const [startDate, setStartDate] = useState<string>('2026-10-01');
-  const [endDate, setEndDate] = useState<string>('2026-10-31');
+  const [preset, setPreset] = useState<FilterPreset>('CURRENT_MONTH');
+  const [startDate, setStartDate] = useState<string>('2026-11-01');
+  const [endDate, setEndDate] = useState<string>('2026-11-30');
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);

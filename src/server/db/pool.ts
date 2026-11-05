@@ -118,6 +118,15 @@ function escapeSqlValue(val: unknown): string {
   if (typeof val === 'boolean') return val ? 'TRUE' : 'FALSE';
   if (typeof val === 'number') return Number.isFinite(val) ? String(val) : 'NULL';
   if (val instanceof Date) return `'${val.toISOString()}'`;
+  if (Array.isArray(val)) {
+    const elements = val.map((item) => {
+      if (item === null || item === undefined) return 'NULL';
+      const s = String(item).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+      return `"${s}"`;
+    });
+    const pgArrayLiteral = `{${elements.join(',')}}`.replace(/'/g, "''");
+    return `'${pgArrayLiteral}'`;
+  }
   if (typeof val === 'object') {
     const jsonStr = JSON.stringify(val).replace(/'/g, "''");
     return `'${jsonStr}'`;

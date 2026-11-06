@@ -37,6 +37,7 @@ import {
 import { api } from '../api';
 import { formatDateSL, formatLKR } from '../../shared/decimal';
 import { AccountReconcileModal } from '../components/AccountReconcileModal';
+import { BalanceTracker } from '../components/BalanceTracker';
 import { EditAccountModal } from '../components/EditAccountModal';
 import type { Account, DashboardSummary, TransactionType } from '../../shared/types';
 
@@ -367,6 +368,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <span className="text-[10px] text-blue-600/80 dark:text-blue-400/80">Total Bank + Physical Cash</span>
             </div>
           </div>
+
+          {/* Running balance tracker: bank app balance vs system balance */}
+          <BalanceTracker
+            breakdowns={summary.accountOverview.accountBreakdowns}
+            refreshTrigger={refreshTrigger}
+            activeUserId={summary.individualOverview ? '22222222-2222-4222-8222-222222222221' : ''}
+            onSaved={() => {
+              loadAccounts();
+              api.getDashboard(startDate, endDate).then((data) => setSummary(data)).catch(() => {});
+            }}
+          />
 
           {/* Detailed Account Ledger & Balance Reconciliation Table */}
           <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">

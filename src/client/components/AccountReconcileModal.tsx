@@ -106,7 +106,7 @@ export const AccountReconcileModal: React.FC<AccountReconcileModalProps> = ({
         notes: notes.trim() || null,
       });
 
-      setSuccess('Account reconciled successfully! Balances are updated.');
+      setSuccess('Bank balance recorded. Check the Running Balance Tracker for the difference.');
       await loadHistory(selectedAccount.id);
       onReconciled();
       setTimeout(() => {

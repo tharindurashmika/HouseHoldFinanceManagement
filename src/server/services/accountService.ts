@@ -546,12 +546,9 @@ export async function reconcileAccountBalance(
 
     const adjustmentTxId: string | null = null;
 
-    if (compareMoney(discrepancy, '0.00') !== 0) {
-      await tx.query(
-        'UPDATE accounts SET current_balance = $1, updated_at = NOW() WHERE id = $2',
-        [actualBalance, accountId]
-      );
-    }
+    // The calculated balance (opening balance + transactions) is intentionally NOT overwritten here.
+    // The reconciliation only records the bank-reported balance so that the difference stays visible
+    // until the missing transactions (e.g. bank fees) are recorded.
 
     const recId = crypto.randomUUID();
     const recRes = await tx.query(

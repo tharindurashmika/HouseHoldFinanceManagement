@@ -28,10 +28,17 @@ import {
   CheckCircle2,
   Clock,
   Users,
+  CreditCard,
+  ArrowRightLeft,
+  Receipt,
+  Scale,
+  Edit,
 } from 'lucide-react';
 import { api } from '../api';
 import { formatDateSL, formatLKR } from '../../shared/decimal';
-import type { DashboardSummary, TransactionType } from '../../shared/types';
+import { AccountReconcileModal } from '../components/AccountReconcileModal';
+import { EditAccountModal } from '../components/EditAccountModal';
+import type { Account, DashboardSummary, TransactionType } from '../../shared/types';
 
 interface DashboardViewProps {
   refreshTrigger: number;
@@ -46,13 +53,28 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onQuickAdd,
   onNavigate,
 }) => {
-  // Default to October 2026 (full month with rich activity) or switchable to Nov 2026 / Last 3 Months
+  // Default to November 2026
   const [preset, setPreset] = useState<FilterPreset>('CURRENT_MONTH');
   const [startDate, setStartDate] = useState<string>('2026-11-01');
   const [endDate, setEndDate] = useState<string>('2026-11-30');
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [reconcileModalOpen, setReconcileModalOpen] = useState(false);
+  const [selectedAccountIdForReconcile, setSelectedAccountIdForReconcile] = useState<string | undefined>();
+  const [editAccountModalOpen, setEditAccountModalOpen] = useState(false);
+  const [selectedAccountForEdit, setSelectedAccountForEdit] = useState<Account | null>(null);
+  const [ledgerMemberFilter, setLedgerMemberFilter] = useState<'ALL' | 'HUSBAND' | 'WIFE'>('ALL');
+  const [ledgerTypeFilter, setLedgerTypeFilter] = useState<'ALL' | 'BANK' | 'CASH'>('ALL');
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+
+  const loadAccounts = () => {
+    api.getAccounts().then((res) => setAccounts(res.accounts)).catch(() => {});
+  };
+
+  useEffect(() => {
+    loadAccounts();
+  }, [refreshTrigger]);
 
   const applyPreset = (p: FilterPreset) => {
     setPreset(p);
@@ -252,6 +274,236 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Requirement 7: Account Balance & Physical Cash Overview */}
+      {summary.accountOverview && (
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div>
+              <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <Landmark className="w-5 h-5 text-blue-600" />
+                <span>Account & Cash Balances Overview</span>
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Live calculated balances across Commercial Bank, BOC, NSB, and physical cash wallets
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  setSelectedAccountIdForReconcile(undefined);
+                  setReconcileModalOpen(true);
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-xs font-semibold border border-blue-200 dark:border-blue-800 transition shadow-sm"
+              >
+                <Scale className="w-3.5 h-3.5" />
+                <span>Reconcile Statement</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 gap-3">
+            <div className="p-3.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Commercial Bank</span>
+              <div className="text-lg font-bold font-mono text-slate-900 dark:text-white mt-1">
+                {formatLKR(summary.accountOverview.commercialBankBalance)}
+              </div>
+              <span className="text-[10px] text-slate-400">Salary & Daily Banking</span>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">BOC Bank Account</span>
+              <div className="text-lg font-bold font-mono text-slate-900 dark:text-white mt-1">
+                {formatLKR(summary.accountOverview.bocBalance)}
+              </div>
+              <span className="text-[10px] text-slate-400">Wife Bank of Ceylon</span>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">NSB Bank Accounts</span>
+              <div className="text-lg font-bold font-mono text-slate-900 dark:text-white mt-1">
+                {formatLKR(summary.accountOverview.nsbBalance)}
+              </div>
+              <span className="text-[10px] text-slate-400">Tharindu & Wife Savings</span>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 shadow-sm">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">Total Bank Balance</span>
+              <div className="text-lg font-bold font-mono text-emerald-700 dark:text-emerald-300 mt-1">
+                {formatLKR(summary.accountOverview.totalHouseholdBankBalance)}
+              </div>
+              <span className="text-[10px] text-emerald-600/80 dark:text-emerald-400/80">Across all 5 Bank Accounts</span>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Husband's Cash (Tharindu)</span>
+              <div className="text-lg font-bold font-mono text-slate-900 dark:text-white mt-1">
+                {formatLKR(summary.accountOverview.husbandCashBalance)}
+              </div>
+              <span className="text-[10px] text-slate-400">Physical Cash Wallet</span>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Wife's Cash (Sudu)</span>
+              <div className="text-lg font-bold font-mono text-slate-900 dark:text-white mt-1">
+                {formatLKR(summary.accountOverview.wifeCashBalance)}
+              </div>
+              <span className="text-[10px] text-slate-400">Physical Cash Wallet</span>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 shadow-sm">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-300">Total Household Cash</span>
+              <div className="text-lg font-bold font-mono text-amber-700 dark:text-amber-300 mt-1">
+                {formatLKR(summary.accountOverview.totalHouseholdCashBalance)}
+              </div>
+              <span className="text-[10px] text-amber-600/80 dark:text-amber-400/80">Physical Wallet Cash</span>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-blue-50/50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 shadow-sm">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-blue-700 dark:text-blue-300">Total Available Funds</span>
+              <div className="text-lg font-black font-mono text-blue-700 dark:text-blue-300 mt-1">
+                {formatLKR(summary.accountOverview.totalHouseholdAvailableFunds)}
+              </div>
+              <span className="text-[10px] text-blue-600/80 dark:text-blue-400/80">Total Bank + Physical Cash</span>
+            </div>
+          </div>
+
+          {/* Detailed Account Ledger & Balance Reconciliation Table */}
+          <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                  Detailed Account Balances & Transaction Audit Ledger
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Opening Balance + Income + In Transfers - Out Transfers - Expenses - Withdrawals - Bank Fees = Current Balance
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  value={ledgerMemberFilter}
+                  onChange={(e) => setLedgerMemberFilter(e.target.value as any)}
+                  className="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold"
+                >
+                  <option value="ALL">All Members</option>
+                  <option value="HUSBAND">Husband (Tharindu)</option>
+                  <option value="WIFE">Wife (Sudu)</option>
+                </select>
+
+                <select
+                  value={ledgerTypeFilter}
+                  onChange={(e) => setLedgerTypeFilter(e.target.value as any)}
+                  className="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold"
+                >
+                  <option value="ALL">All Accounts & Wallets</option>
+                  <option value="BANK">Bank Accounts Only</option>
+                  <option value="CASH">Cash Wallets Only</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 font-semibold border-b border-slate-200 dark:border-slate-700">
+                  <tr>
+                    <th className="p-2.5">Account / Card</th>
+                    <th className="p-2.5">Bank / Type</th>
+                    <th className="p-2.5">Owner</th>
+                    <th className="p-2.5 text-right">Opening Bal</th>
+                    <th className="p-2.5 text-right text-emerald-600">Income (+)</th>
+                    <th className="p-2.5 text-right text-rose-600">Expenses (-)</th>
+                    <th className="p-2.5 text-right text-slate-600">Withdrawals</th>
+                    <th className="p-2.5 text-right text-slate-600">Deposits</th>
+                    <th className="p-2.5 text-right text-amber-600">Bank Fees (-)</th>
+                    <th className="p-2.5 text-right font-bold text-slate-900 dark:text-white">Calculated Bal</th>
+                    <th className="p-2.5 text-center">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-mono text-slate-700 dark:text-slate-300">
+                  {summary.accountOverview.accountBreakdowns
+                    .filter((b) => {
+                      if (ledgerMemberFilter === 'HUSBAND' && b.ownershipType !== 'HUSBAND') return false;
+                      if (ledgerMemberFilter === 'WIFE' && b.ownershipType !== 'WIFE') return false;
+                      if (ledgerTypeFilter === 'BANK' && b.accountType !== 'BANK_SAVINGS' && b.accountType !== 'BANK_CURRENT') return false;
+                      if (ledgerTypeFilter === 'CASH' && b.accountType !== 'CASH') return false;
+                      return true;
+                    })
+                    .map((b) => {
+                      const fullAcc = accounts.find((a) => a.id === b.accountId) || null;
+                      return (
+                        <tr key={b.accountId} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
+                          <td className="p-2.5 font-sans font-semibold text-slate-900 dark:text-white whitespace-nowrap">
+                            {b.accountName}
+                            {b.cardLastFour && (
+                              <span className="ml-1.5 text-[10px] font-mono px-1 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500">
+                                •••• {b.cardLastFour}
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-2.5 font-sans text-slate-500 whitespace-nowrap">
+                            {b.bankName || b.accountType}
+                          </td>
+                          <td className="p-2.5 font-sans text-slate-500 whitespace-nowrap">
+                            {b.ownerName}
+                          </td>
+                          <td className="p-2.5 text-right whitespace-nowrap">
+                            {formatLKR(b.openingBalance, { showDecimals: false })}
+                            <span className="block text-[9px] text-slate-400 font-sans">{b.openingBalanceDate}</span>
+                          </td>
+                          <td className="p-2.5 text-right text-emerald-600 font-semibold whitespace-nowrap">
+                            {Number(b.totalIncome) > 0 ? `+${formatLKR(b.totalIncome, { showDecimals: false })}` : '—'}
+                          </td>
+                          <td className="p-2.5 text-right text-rose-600 font-semibold whitespace-nowrap">
+                            {Number(b.totalExpenses) > 0 ? `-${formatLKR(b.totalExpenses, { showDecimals: false })}` : '—'}
+                          </td>
+                          <td className="p-2.5 text-right text-slate-600 whitespace-nowrap">
+                            {Number(b.withdrawals) > 0 ? formatLKR(b.withdrawals, { showDecimals: false }) : '—'}
+                          </td>
+                          <td className="p-2.5 text-right text-slate-600 whitespace-nowrap">
+                            {Number(b.deposits) > 0 ? formatLKR(b.deposits, { showDecimals: false }) : '—'}
+                          </td>
+                          <td className="p-2.5 text-right text-amber-600 font-semibold whitespace-nowrap">
+                            {Number(b.bankCharges) > 0 ? `-${formatLKR(b.bankCharges, { showDecimals: false })}` : '—'}
+                          </td>
+                          <td className="p-2.5 text-right font-bold text-slate-900 dark:text-white whitespace-nowrap">
+                            {formatLKR(b.currentCalculatedBalance)}
+                          </td>
+                          <td className="p-2.5 text-center font-sans whitespace-nowrap">
+                            <div className="flex items-center justify-center gap-1.5">
+                              <button
+                                onClick={() => {
+                                  setSelectedAccountIdForReconcile(b.accountId);
+                                  setReconcileModalOpen(true);
+                                }}
+                                title="Reconcile with Statement"
+                                className="px-2 py-1 rounded-md text-[11px] font-semibold bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/40 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 transition"
+                              >
+                                Reconcile
+                              </button>
+                              {fullAcc && (
+                                <button
+                                  onClick={() => {
+                                    setSelectedAccountForEdit(fullAcc);
+                                    setEditAccountModalOpen(true);
+                                  }}
+                                  title="Edit Account / Card"
+                                  className="p-1 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+                                >
+                                  <Edit className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Secondary Row: Individual Husband vs Wife Overview & Financial Health Indicators */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -687,6 +939,29 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
       </div>
+
+      <AccountReconcileModal
+        isOpen={reconcileModalOpen}
+        onClose={() => setReconcileModalOpen(false)}
+        onReconciled={() => {
+          loadAccounts();
+          api.getDashboard(startDate, endDate).then((data) => setSummary(data)).catch(() => {});
+        }}
+        accounts={accounts}
+        initialAccountId={selectedAccountIdForReconcile}
+        activeUserId={summary.individualOverview ? '22222222-2222-4222-8222-222222222221' : ''}
+      />
+
+      <EditAccountModal
+        isOpen={editAccountModalOpen}
+        onClose={() => setEditAccountModalOpen(false)}
+        onSaved={() => {
+          loadAccounts();
+          api.getDashboard(startDate, endDate).then((data) => setSummary(data)).catch(() => {});
+        }}
+        account={selectedAccountForEdit}
+        allAccounts={accounts}
+      />
     </div>
   );
 };

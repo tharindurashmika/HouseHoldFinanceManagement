@@ -59,10 +59,12 @@ export const accountSchema = z.object({
     'DIGITAL_WALLET',
     'OTHER',
   ]),
+  bankName: z.string().trim().max(120).nullable().optional().default(null),
   cardLastFour: z.string().trim().max(15).nullable().optional().default(null),
   linkedParentAccountId: z.string().uuid().nullable().optional().default(null),
   currency: z.string().trim().min(3).max(5).default('LKR'),
   openingBalance: moneyStringSchema,
+  openingBalanceDate: isoDateSchema.optional().default('2026-11-01'),
   creditLimit: moneyStringSchema.nullable().optional().default(null),
   status: z.enum(['ACTIVE', 'ARCHIVED']).default('ACTIVE'),
   notes: z.string().nullable().optional().default(null),
@@ -126,6 +128,9 @@ export const transactionSchema = z
       ])
       .optional()
       .default('REGULAR_INCOME'),
+    transferFeeLkr: nonNegativeMoneySchema.optional().default('0.00'),
+    transferFeeCategoryId: z.string().uuid().nullable().optional().default(null),
+    parentTransactionId: z.string().uuid().nullable().optional().default(null),
     isEssential: z.boolean().default(true),
     isFixed: z.boolean().default(false),
     recurringScheduleId: z.string().uuid().nullable().optional().default(null),

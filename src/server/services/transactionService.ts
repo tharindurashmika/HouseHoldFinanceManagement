@@ -1,8 +1,8 @@
-const crypto = globalThis.crypto;
+import crypto from 'crypto';
 import { query, withTransaction, type DbExecutor } from '../db/pool';
 import { AppError } from '../middleware/error';
-import { addMoney, toMoneyString } from '../../shared/decimal';
-import { mutateAccountBalanceInTx } from './accountService';
+import { addMoney, compareMoney, toMoneyString } from '../../shared/decimal';
+import { mutateAccountBalanceInTx, recalculateAccountBalance } from './accountService';
 import type {
   HouseholdMemberScope,
   PaymentMethod,
@@ -39,6 +39,9 @@ function mapTransactionRow(row: any, items: TransactionItem[] = []): Transaction
     recordedByName: row.recorded_by_name || undefined,
     householdMemberScope: row.household_member_scope,
     fundingSource: row.funding_source || 'REGULAR_INCOME',
+    transferFeeLkr: row.transfer_fee_lkr ? toMoneyString(row.transfer_fee_lkr) : undefined,
+    transferFeeCategoryId: row.transfer_fee_category_id || null,
+    parentTransactionId: row.parent_transaction_id || null,
     isEssential: Boolean(row.is_essential),
     isFixed: Boolean(row.is_fixed),
     recurringScheduleId: row.recurring_schedule_id,
@@ -182,6 +185,9 @@ export interface CreateTransactionInput {
   recordedByUserId: string;
   householdMemberScope?: HouseholdMemberScope;
   fundingSource?: 'REGULAR_INCOME' | 'OVERTIME_INCOME' | 'BORROWED_FRIENDS_PARENTS' | 'PREVIOUS_SAVINGS' | 'OTHER';
+  transferFeeLkr?: string;
+  transferFeeCategoryId?: string | null;
+  parentTransactionId?: string | null;
   isEssential?: boolean;
   isFixed?: boolean;
   recurringScheduleId?: string | null;
@@ -207,12 +213,23 @@ export async function createTransactionInTx(
   const actualLkr = toMoneyString(input.actualLkrAmount);
   const origAmt = toMoneyString(input.originalAmount);
 
+  let feeCatId = input.transferFeeCategoryId || null;
+  const hasFee = Boolean(input.transferFeeLkr && compareMoney(input.transferFeeLkr, '0.00') > 0);
+  if (hasFee && !feeCatId) {
+    const catRes = await tx.query(
+      `SELECT id FROM categories WHERE household_id = $1 AND name ILIKE '%Bank Charge%' LIMIT 1`,
+      [householdId]
+    );
+    feeCatId = catRes.rows[0]?.id || null;
+  }
+
   await tx.query(
     `INSERT INTO transactions (
       id, household_id, transaction_date, transaction_type, description,
       category_id, subcategory_id, original_amount, original_currency, exchange_rate,
       actual_lkr_amount, payment_method, source_account_id, destination_account_id,
       paid_or_received_by_user_id, recorded_by_user_id, household_member_scope, funding_source,
+      transfer_fee_lkr, transfer_fee_category_id, parent_transaction_id,
       is_essential, is_fixed, recurring_schedule_id, subscription_id, loan_id,
       utility_billing_period_start, utility_billing_period_end, is_demo_data, notes
     ) VALUES (
@@ -220,8 +237,9 @@ export async function createTransactionInTx(
       $6, $7, $8, $9, $10,
       $11, $12, $13, $14,
       $15, $16, $17, $18,
-      $19, $20, $21, $22, $23,
-      $24, $25, FALSE, $26
+      $19, $20, $21,
+      $22, $23, $24, $25, $26,
+      $27, $28, FALSE, $29
     )`,
     [
       txId,
@@ -242,6 +260,9 @@ export async function createTransactionInTx(
       input.recordedByUserId,
       input.householdMemberScope || 'SHARED',
       input.fundingSource || 'REGULAR_INCOME',
+      hasFee ? toMoneyString(input.transferFeeLkr!) : '0.00',
+      hasFee ? feeCatId : null,
+      input.parentTransactionId || null,
       input.isEssential ?? true,
       input.isFixed ?? false,
       input.recurringScheduleId || null,
@@ -294,6 +315,61 @@ export async function createTransactionInTx(
     );
   }
 
+  // If there is an associated bank transfer/service fee, record it as a linked child expense
+  if (hasFee) {
+    const feeLkr = toMoneyString(input.transferFeeLkr!);
+    const childTxId = crypto.randomUUID();
+    await tx.query(
+      `INSERT INTO transactions (
+        id, household_id, transaction_date, transaction_type, description,
+        category_id, subcategory_id, original_amount, original_currency, exchange_rate,
+        actual_lkr_amount, payment_method, source_account_id, destination_account_id,
+        paid_or_received_by_user_id, recorded_by_user_id, household_member_scope, funding_source,
+        transfer_fee_lkr, transfer_fee_category_id, parent_transaction_id,
+        is_essential, is_fixed, is_demo_data, notes
+      ) VALUES (
+        $1, $2, $3, 'EXPENSE', $4,
+        $5, NULL, $6, 'LKR', '1.000000',
+        $6, $7, $8, NULL,
+        $9, $10, $11, $12,
+        '0.00', NULL, $13,
+        TRUE, FALSE, FALSE, $14
+      )`,
+      [
+        childTxId,
+        householdId,
+        input.transactionDate,
+        `Bank Fee / Service Charge (${input.description.trim()})`,
+        feeCatId,
+        feeLkr,
+        input.paymentMethod,
+        input.sourceAccountId,
+        input.paidOrReceivedByUserId,
+        input.recordedByUserId,
+        input.householdMemberScope || 'SHARED',
+        input.fundingSource || 'REGULAR_INCOME',
+        txId,
+        `Service charge associated with transaction: ${input.description.trim()}`,
+      ]
+    );
+
+    await mutateAccountBalanceInTx(
+      tx,
+      householdId,
+      input.sourceAccountId,
+      'SOURCE',
+      'EXPENSE',
+      feeLkr,
+      'APPLY'
+    );
+  }
+
+  // Recalculate deterministic balances
+  await recalculateAccountBalance(householdId, input.sourceAccountId, tx);
+  if (input.transactionType === 'TRANSFER' && input.destinationAccountId) {
+    await recalculateAccountBalance(householdId, input.destinationAccountId, tx);
+  }
+
   return txId;
 }
 
@@ -321,7 +397,25 @@ export async function updateTransaction(
     }
     const oldTx = oldRes.rows[0];
 
-    // 1. Reverse old balance impacts
+    // 1. Reverse old child fee transactions
+    const oldChildren = await tx.query(
+      'SELECT * FROM transactions WHERE parent_transaction_id = $1',
+      [transactionId]
+    );
+    for (const child of oldChildren.rows) {
+      await mutateAccountBalanceInTx(
+        tx,
+        householdId,
+        child.source_account_id,
+        'SOURCE',
+        child.transaction_type,
+        toMoneyString(child.actual_lkr_amount),
+        'REVERSE'
+      );
+    }
+    await tx.query('DELETE FROM transactions WHERE parent_transaction_id = $1', [transactionId]);
+
+    // 2. Reverse old balance impacts
     await mutateAccountBalanceInTx(
       tx,
       householdId,
@@ -343,9 +437,19 @@ export async function updateTransaction(
       );
     }
 
-    // 2. Update the transaction record
+    // 3. Update the transaction record
     const actualLkr = toMoneyString(input.actualLkrAmount);
     const origAmt = toMoneyString(input.originalAmount);
+
+    let feeCatId = input.transferFeeCategoryId || null;
+    const hasFee = Boolean(input.transferFeeLkr && compareMoney(input.transferFeeLkr, '0.00') > 0);
+    if (hasFee && !feeCatId) {
+      const catRes = await tx.query(
+        `SELECT id FROM categories WHERE household_id = $1 AND name ILIKE '%Bank Charge%' LIMIT 1`,
+        [householdId]
+      );
+      feeCatId = catRes.rows[0]?.id || null;
+    }
 
     await tx.query(
       `UPDATE transactions
@@ -364,13 +468,15 @@ export async function updateTransaction(
            paid_or_received_by_user_id = $13,
            household_member_scope = $14,
            funding_source = $15,
-           is_essential = $16,
-           is_fixed = $17,
-           utility_billing_period_start = $18,
-           utility_billing_period_end = $19,
-           notes = $20,
+           transfer_fee_lkr = $16,
+           transfer_fee_category_id = $17,
+           is_essential = $18,
+           is_fixed = $19,
+           utility_billing_period_start = $20,
+           utility_billing_period_end = $21,
+           notes = $22,
            updated_at = NOW()
-       WHERE id = $21 AND household_id = $22`,
+       WHERE id = $23 AND household_id = $24`,
       [
         input.transactionDate,
         input.transactionType,
@@ -387,6 +493,8 @@ export async function updateTransaction(
         input.paidOrReceivedByUserId,
         input.householdMemberScope || 'SHARED',
         input.fundingSource || 'REGULAR_INCOME',
+        hasFee ? toMoneyString(input.transferFeeLkr!) : '0.00',
+        hasFee ? feeCatId : null,
         input.isEssential ?? true,
         input.isFixed ?? false,
         input.utilityBillingPeriodStart || null,
@@ -416,7 +524,7 @@ export async function updateTransaction(
       }
     }
 
-    // 3. Apply new balance impacts
+    // 4. Apply new balance impacts
     await mutateAccountBalanceInTx(
       tx,
       householdId,
@@ -436,6 +544,67 @@ export async function updateTransaction(
         actualLkr,
         'APPLY'
       );
+    }
+
+    // 5. If new transfer has fee, insert new child fee transaction
+    if (hasFee) {
+      const feeLkr = toMoneyString(input.transferFeeLkr!);
+      const childTxId = crypto.randomUUID();
+      await tx.query(
+        `INSERT INTO transactions (
+          id, household_id, transaction_date, transaction_type, description,
+          category_id, subcategory_id, original_amount, original_currency, exchange_rate,
+          actual_lkr_amount, payment_method, source_account_id, destination_account_id,
+          paid_or_received_by_user_id, recorded_by_user_id, household_member_scope, funding_source,
+          transfer_fee_lkr, transfer_fee_category_id, parent_transaction_id,
+          is_essential, is_fixed, is_demo_data, notes
+        ) VALUES (
+          $1, $2, $3, 'EXPENSE', $4,
+          $5, NULL, $6, 'LKR', '1.000000',
+          $6, $7, $8, NULL,
+          $9, $10, $11, $12,
+          '0.00', NULL, $13,
+          TRUE, FALSE, FALSE, $14
+        )`,
+        [
+          childTxId,
+          householdId,
+          input.transactionDate,
+          `Bank Fee / Service Charge (${input.description.trim()})`,
+          feeCatId,
+          feeLkr,
+          input.paymentMethod,
+          input.sourceAccountId,
+          input.paidOrReceivedByUserId,
+          input.recordedByUserId,
+          input.householdMemberScope || 'SHARED',
+          input.fundingSource || 'REGULAR_INCOME',
+          transactionId,
+          `Service charge associated with transaction: ${input.description.trim()}`,
+        ]
+      );
+
+      await mutateAccountBalanceInTx(
+        tx,
+        householdId,
+        input.sourceAccountId,
+        'SOURCE',
+        'EXPENSE',
+        feeLkr,
+        'APPLY'
+      );
+    }
+
+    // Recalculate deterministic balances on all touched accounts
+    const touchedAccounts = new Set<string>([
+      oldTx.source_account_id,
+      input.sourceAccountId,
+    ]);
+    if (oldTx.destination_account_id) touchedAccounts.add(oldTx.destination_account_id);
+    if (input.destinationAccountId) touchedAccounts.add(input.destinationAccountId);
+
+    for (const accId of touchedAccounts) {
+      await recalculateAccountBalance(householdId, accId, tx);
     }
   });
 
@@ -483,6 +652,24 @@ export async function deleteTransaction(
       await tx.query('DELETE FROM loan_installments WHERE id = $1', [inst.id]);
     }
 
+    // Reverse child fee transactions if any
+    const childTxs = await tx.query(
+      'SELECT * FROM transactions WHERE parent_transaction_id = $1',
+      [transactionId]
+    );
+    for (const child of childTxs.rows) {
+      await mutateAccountBalanceInTx(
+        tx,
+        householdId,
+        child.source_account_id,
+        'SOURCE',
+        child.transaction_type,
+        toMoneyString(child.actual_lkr_amount),
+        'REVERSE'
+      );
+    }
+    await tx.query('DELETE FROM transactions WHERE parent_transaction_id = $1', [transactionId]);
+
     // Reverse account balance impact
     await mutateAccountBalanceInTx(
       tx,
@@ -509,6 +696,12 @@ export async function deleteTransaction(
       transactionId,
       householdId,
     ]);
+
+    // Recalculate deterministic balances on touched accounts
+    await recalculateAccountBalance(householdId, oldTx.source_account_id, tx);
+    if (oldTx.destination_account_id) {
+      await recalculateAccountBalance(householdId, oldTx.destination_account_id, tx);
+    }
   });
 }
 

@@ -48,10 +48,12 @@ CREATE TABLE IF NOT EXISTS accounts (
   account_type VARCHAR(30) NOT NULL CHECK (account_type IN (
     'BANK_SAVINGS', 'BANK_CURRENT', 'CASH', 'CREDIT_CARD', 'DEBIT_CARD', 'DIGITAL_WALLET', 'OTHER'
   )),
+  bank_name VARCHAR(120),
   card_last_four VARCHAR(15),
   linked_parent_account_id UUID REFERENCES accounts(id) ON DELETE SET NULL,
   currency VARCHAR(10) NOT NULL DEFAULT 'LKR',
   opening_balance NUMERIC(15, 2) NOT NULL DEFAULT 0.00,
+  opening_balance_date DATE DEFAULT '2026-11-01',
   current_balance NUMERIC(15, 2) NOT NULL DEFAULT 0.00,
   credit_limit NUMERIC(15, 2),
   status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'ARCHIVED')),
@@ -168,6 +170,9 @@ CREATE TABLE IF NOT EXISTS transactions (
     household_member_scope IN ('HUSBAND', 'WIFE', 'SHARED')
   ),
   funding_source VARCHAR(40) NOT NULL DEFAULT 'REGULAR_INCOME',
+  transfer_fee_lkr NUMERIC(15, 2) NOT NULL DEFAULT 0.00,
+  transfer_fee_category_id UUID REFERENCES categories(id) ON DELETE SET NULL,
+  parent_transaction_id UUID REFERENCES transactions(id) ON DELETE CASCADE,
   is_essential BOOLEAN NOT NULL DEFAULT TRUE,
   is_fixed BOOLEAN NOT NULL DEFAULT FALSE,
   recurring_schedule_id UUID REFERENCES recurring_schedules(id) ON DELETE SET NULL,
@@ -281,7 +286,12 @@ CREATE TABLE IF NOT EXISTS savings_contributions (
 CREATE INDEX IF NOT EXISTS idx_savings_contrib_date ON savings_contributions(contribution_date DESC);
 
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS card_last_four VARCHAR(15);
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS bank_name VARCHAR(120);
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS opening_balance_date DATE DEFAULT '2026-11-01';
 ALTER TABLE loans ADD COLUMN IF NOT EXISTS loan_reference_no VARCHAR(60);
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS funding_source VARCHAR(40) NOT NULL DEFAULT 'REGULAR_INCOME';
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS transfer_fee_lkr NUMERIC(15, 2) NOT NULL DEFAULT 0.00;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS transfer_fee_category_id UUID REFERENCES categories(id) ON DELETE SET NULL;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS parent_transaction_id UUID REFERENCES transactions(id) ON DELETE CASCADE;
 `;
 

@@ -19,8 +19,10 @@ import {
 import { createCategory, listCategories, updateCategory } from '../server/services/categoryService';
 import {
   createAccount,
+  getAccountBalanceBreakdowns,
   listAccountReconciliations,
   listAccounts,
+  recalculateAccountBalance,
   reconcileAccountBalance,
   updateAccount,
 } from '../server/services/accountService';
@@ -64,6 +66,7 @@ import {
 } from '../server/services/analyticsService';
 import type {
   Account,
+  AccountBalanceBreakdown,
   AccountReconciliation,
   Budget,
   Category,
@@ -322,6 +325,25 @@ export const api = {
       const user = await resolveActiveUser();
       const accounts = await listAccounts(user.householdId);
       return { accounts };
+    }),
+
+  getAccountBreakdowns: (params: Record<string, string | undefined> = {}): Promise<{ breakdowns: AccountBalanceBreakdown[] }> =>
+    runAction(async () => {
+      const user = await resolveActiveUser();
+      const breakdowns = await getAccountBalanceBreakdowns(user.householdId, {
+        accountId: params.accountId,
+        memberUserId: params.memberUserId,
+        startDate: params.startDate,
+        endDate: params.endDate,
+      });
+      return { breakdowns };
+    }),
+
+  recalculateAccount: (id: string): Promise<{ currentCalculatedBalance: string }> =>
+    runAction(async () => {
+      const user = await resolveActiveUser();
+      const currentCalculatedBalance = await recalculateAccountBalance(user.householdId, id);
+      return { currentCalculatedBalance };
     }),
 
   createAccount: (payload: any): Promise<{ account: Account }> =>

@@ -1,4 +1,5 @@
 import Decimal from 'decimal.js';
+import ExcelJS from 'exceljs';
 import Papa from 'papaparse';
 import {
   addMoney,
@@ -15,14 +16,14 @@ import {
   aggregatePeriodTransactions,
   generatePracticalInsights,
 } from '../../shared/calculations';
-import { listAccounts } from './accountService';
+import { listAccounts, getAccountBalanceBreakdowns } from './accountService';
 import { listLoans } from './loanService';
 import { listSubscriptions } from './subscriptionService';
 import { listRecurringSchedules } from './recurringService';
 import { getMonthlyBudgetsWithActuals } from './budgetService';
 import { listSavingsContributionsByPeriod, listSavingsGoals } from './savingsService';
 import { listTransactions } from './transactionService';
-import type { DashboardSummary } from '../../shared/types';
+import type { DashboardSummary, DashboardAccountOverview } from '../../shared/types';
 
 function getPreviousPeriodRange(startDate: string, endDate: string): {
   prevStart: string;
@@ -79,6 +80,7 @@ export async function getDashboardSummary(
     subscriptions,
     recurringSchedules,
     budgetEval,
+    accountBreakdowns,
   ] = await Promise.all([
     listTransactions(householdId, { startDate, endDate }),
     listTransactions(householdId, { startDate: prevStart, endDate: prevEnd }),
@@ -91,6 +93,7 @@ export async function getDashboardSummary(
     listSubscriptions(householdId),
     listRecurringSchedules(householdId),
     getMonthlyBudgetsWithActuals(householdId, endYear, endMonth),
+    getAccountBalanceBreakdowns(householdId, { startDate, endDate }),
   ]);
 
   const currAgg = aggregatePeriodTransactions(currTxs, currSavingsContribs);
@@ -280,6 +283,53 @@ export async function getDashboardSummary(
     categoryComparison,
   });
 
+  // Requirement 7: Dashboard Account Balance Overview
+  let commercialBankBalance = '0.00';
+  let bocBalance = '0.00';
+  let nsbBalance = '0.00';
+  let husbandCashBalance = '0.00';
+  let wifeCashBalance = '0.00';
+  let totalHouseholdBankBalance = '0.00';
+  let totalHouseholdCashBalance = '0.00';
+
+  for (const b of accountBreakdowns) {
+    if (b.status !== 'ACTIVE' || b.linkedParentAccountId) continue;
+    const bal = b.currentCalculatedBalance;
+    const nameLower = (b.accountName + ' ' + (b.bankName || '')).toLowerCase();
+
+    if (b.accountType === 'CASH') {
+      totalHouseholdCashBalance = addMoney(totalHouseholdCashBalance, bal);
+      if (b.ownershipType === 'HUSBAND' || nameLower.includes('husband') || nameLower.includes('tharindu')) {
+        husbandCashBalance = addMoney(husbandCashBalance, bal);
+      } else if (b.ownershipType === 'WIFE' || nameLower.includes('wife') || nameLower.includes('sudu')) {
+        wifeCashBalance = addMoney(wifeCashBalance, bal);
+      }
+    } else if (b.accountType === 'BANK_SAVINGS' || b.accountType === 'BANK_CURRENT') {
+      totalHouseholdBankBalance = addMoney(totalHouseholdBankBalance, bal);
+      if (nameLower.includes('commercial')) {
+        commercialBankBalance = addMoney(commercialBankBalance, bal);
+      } else if (nameLower.includes('boc') || nameLower.includes('ceylon')) {
+        bocBalance = addMoney(bocBalance, bal);
+      } else if (nameLower.includes('nsb') || nameLower.includes('savings bank')) {
+        nsbBalance = addMoney(nsbBalance, bal);
+      }
+    }
+  }
+
+  const totalHouseholdAvailableFunds = addMoney(totalHouseholdBankBalance, totalHouseholdCashBalance);
+
+  const accountOverview: DashboardAccountOverview = {
+    commercialBankBalance,
+    bocBalance,
+    nsbBalance,
+    husbandCashBalance,
+    wifeCashBalance,
+    totalHouseholdBankBalance,
+    totalHouseholdCashBalance,
+    totalHouseholdAvailableFunds,
+    accountBreakdowns,
+  };
+
   return {
     period: {
       startDate,
@@ -310,6 +360,7 @@ export async function getDashboardSummary(
       wifeSpendingSharePct: currAgg.wifeSpendingSharePct,
     },
     financialHealth: currAgg.ratios,
+    accountOverview,
     charts: {
       incomeVsExpensesMonthly,
       expenseByCategory,
@@ -546,4 +597,42 @@ export async function exportReportToCsv(
   const csv = Papa.unparse(data.rows);
   const filename = `${params.reportType.toLowerCase()}_${params.startDate}_to_${params.endDate}.csv`;
   return { filename, csv };
+}
+
+export async function exportReportToExcel(
+  householdId: string,
+  params: Parameters<typeof generateReportData>[1]
+): Promise<{ filename: string; buffer: Buffer }> {
+  const data = await generateReportData(householdId, params);
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'Household Finance Management System (Sri Lanka)';
+  workbook.created = new Date();
+
+  const sheet = workbook.addWorksheet('Financial Report');
+
+  // Header Banner
+  sheet.addRow([data.title]);
+  sheet.getRow(1).font = { bold: true, size: 14 };
+  sheet.addRow([
+    `Period: ${data.period.formatted} | Combined Income: ${formatLKR(data.summary.combinedIncomeLkr)} | Total Expenses: ${formatLKR(data.summary.totalExpensesLkr)} | Net Cash Flow: ${formatLKR(data.summary.cashFlowSurplusLkr)}`,
+  ]);
+  sheet.addRow([]);
+
+  if (data.rows.length > 0) {
+    const headers = Object.keys(data.rows[0]);
+    const headerRow = sheet.addRow(headers);
+    headerRow.font = { bold: true };
+    for (const row of data.rows) {
+      sheet.addRow(headers.map((h) => row[h]));
+    }
+    sheet.columns.forEach((col) => {
+      col.width = 22;
+    });
+  } else {
+    sheet.addRow(['No records found for the selected filter criteria.']);
+  }
+
+  const arrayBuffer = await workbook.xlsx.writeBuffer();
+  const filename = `${params.reportType.toLowerCase()}_${params.startDate}_to_${params.endDate}.xlsx`;
+  return { filename, buffer: Buffer.from(arrayBuffer) };
 }

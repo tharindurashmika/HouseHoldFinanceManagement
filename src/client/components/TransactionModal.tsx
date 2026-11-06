@@ -55,6 +55,8 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   const [utilityStart, setUtilityStart] = useState<string>('');
   const [utilityEnd, setUtilityEnd] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
+  const [transferFeeLkr, setTransferFeeLkr] = useState<string>('');
+  const [transferFeeCategoryId, setTransferFeeCategoryId] = useState<string>('');
   const [items, setItems] = useState<
     Array<{ subcategoryId: string; itemName: string; quantity: string; amountLkr: string }>
   >([]);
@@ -92,6 +94,8 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       setUtilityStart(editingTransaction.utilityBillingPeriodStart || '');
       setUtilityEnd(editingTransaction.utilityBillingPeriodEnd || '');
       setNotes(editingTransaction.notes || '');
+      setTransferFeeLkr(editingTransaction.transferFeeLkr || '');
+      setTransferFeeCategoryId(editingTransaction.transferFeeCategoryId || '');
       setItems(
         (editingTransaction.items || []).map((i) => ({
           subcategoryId: i.subcategoryId || '',
@@ -124,6 +128,8 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       setUtilityStart('');
       setUtilityEnd('');
       setNotes('');
+      setTransferFeeLkr('');
+      setTransferFeeCategoryId('');
       setItems([]);
     }
   }, [isOpen, editingTransaction, initialType, categories, accounts, activeUserId, members]);
@@ -173,6 +179,62 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
     setActualLkrAmount(sum);
   };
 
+  const handleTransferPreset = (preset: 'WITHDRAWAL' | 'DEPOSIT' | 'CASH_TRANSFER' | 'BANK_TRANSFER') => {
+    const banks = accounts.filter(
+      (a) => (a.accountType === 'BANK_SAVINGS' || a.accountType === 'BANK_CURRENT') && !a.linkedParentAccountId
+    );
+    const cashWallets = accounts.filter((a) => a.accountType === 'CASH');
+    const husbandCash =
+      cashWallets.find((c) => c.ownershipType === 'HUSBAND' || c.name.toLowerCase().includes('husband') || c.name.toLowerCase().includes('tharindu')) ||
+      cashWallets[0];
+    const wifeCash =
+      cashWallets.find((c) => c.ownershipType === 'WIFE' || c.name.toLowerCase().includes('wife') || c.name.toLowerCase().includes('sudu')) ||
+      cashWallets[1] ||
+      cashWallets[0];
+
+    if (preset === 'WITHDRAWAL') {
+      if (banks[0]) setSourceAccountId(banks[0].id);
+      if (husbandCash) setDestinationAccountId(husbandCash.id);
+      setPaymentMethod('DEBIT_CARD');
+      if (!description) setDescription('ATM Cash Withdrawal');
+      if (!transferFeeLkr) setTransferFeeLkr('30.00');
+    } else if (preset === 'DEPOSIT') {
+      if (husbandCash) setSourceAccountId(husbandCash.id);
+      if (banks[0]) setDestinationAccountId(banks[0].id);
+      setPaymentMethod('CASH');
+      if (!description) setDescription('Cash Deposit into Bank');
+      setTransferFeeLkr('');
+    } else if (preset === 'CASH_TRANSFER') {
+      if (husbandCash) setSourceAccountId(husbandCash.id);
+      if (wifeCash) setDestinationAccountId(wifeCash.id);
+      setPaymentMethod('CASH');
+      if (!description) setDescription('Cash Transfer between Wallets');
+      setTransferFeeLkr('');
+    } else if (preset === 'BANK_TRANSFER') {
+      if (banks[0]) setSourceAccountId(banks[0].id);
+      if (banks[1]) setDestinationAccountId(banks[1].id);
+      setPaymentMethod('BANK_TRANSFER');
+      if (!description) setDescription('Online Bank Transfer');
+      if (!transferFeeLkr) setTransferFeeLkr('25.00');
+    }
+  };
+
+  const handlePaymentMethodChange = (pm: PaymentMethod) => {
+    setPaymentMethod(pm);
+    if (pm === 'CASH') {
+      const cashAcc = accounts.find((a) => a.accountType === 'CASH');
+      if (cashAcc) setSourceAccountId(cashAcc.id);
+    } else if (pm === 'DEBIT_CARD') {
+      const cardAcc =
+        accounts.find((a) => a.accountType === 'DEBIT_CARD') ||
+        accounts.find((a) => a.accountType === 'BANK_CURRENT' || a.accountType === 'BANK_SAVINGS');
+      if (cardAcc) setSourceAccountId(cardAcc.id);
+    } else if (pm === 'CREDIT_CARD') {
+      const creditAcc = accounts.find((a) => a.accountType === 'CREDIT_CARD');
+      if (creditAcc) setSourceAccountId(creditAcc.id);
+    }
+  };
+
   if (!isOpen) return null;
 
   const isUtilityCategory =
@@ -205,6 +267,8 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
         isFixed,
         utilityBillingPeriodStart: utilityStart || null,
         utilityBillingPeriodEnd: utilityEnd || null,
+        transferFeeLkr: transactionType === 'TRANSFER' && transferFeeLkr ? toMoneyString(transferFeeLkr) : '0.00',
+        transferFeeCategoryId: transactionType === 'TRANSFER' && transferFeeLkr ? transferFeeCategoryId || null : null,
         notes: notes || null,
         items: items
           .filter((i) => i.itemName.trim() && Number(i.amountLkr) > 0)
@@ -293,9 +357,51 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
           </div>
 
           {transactionType === 'TRANSFER' && (
-            <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 text-xs text-blue-800 dark:text-blue-200">
-              <strong>Rule 2 (No Double Counting):</strong> Moving money between household accounts or settling a Credit Card bill from a Bank Account is recorded as an Internal Transfer and is never double-counted as income or expense.
-            </div>
+            <>
+              <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 text-xs text-blue-800 dark:text-blue-200">
+                <strong>Internal Transfer:</strong> Moving money between bank accounts or cash wallets is never counted as an expense or income.
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                  Quick Transfer Shortcuts
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleTransferPreset('WITHDRAWAL')}
+                    className="p-2 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 transition border border-slate-200 dark:border-slate-700 text-center flex flex-col items-center gap-1"
+                  >
+                    <span className="text-base">🏧</span>
+                    <span>Cash Withdrawal</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleTransferPreset('DEPOSIT')}
+                    className="p-2 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 transition border border-slate-200 dark:border-slate-700 text-center flex flex-col items-center gap-1"
+                  >
+                    <span className="text-base">🏦</span>
+                    <span>Cash Deposit</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleTransferPreset('CASH_TRANSFER')}
+                    className="p-2 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 transition border border-slate-200 dark:border-slate-700 text-center flex flex-col items-center gap-1"
+                  >
+                    <span className="text-base">🤝</span>
+                    <span>Cash-to-Cash</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleTransferPreset('BANK_TRANSFER')}
+                    className="p-2 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 transition border border-slate-200 dark:border-slate-700 text-center flex flex-col items-center gap-1"
+                  >
+                    <span className="text-base">🌐</span>
+                    <span>Online Transfer</span>
+                  </button>
+                </div>
+              </div>
+            </>
           )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -496,10 +602,22 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
               >
                 {accounts.map((a) => (
                   <option key={a.id} value={a.id}>
-                    {a.name} ({a.accountType === 'CREDIT_CARD' ? `Owed: ${formatLKR(a.currentBalance)}` : formatLKR(a.currentBalance)})
+                    {a.name} ({a.bankName ? `${a.bankName} • ` : ''}{a.accountType === 'CREDIT_CARD' ? `Owed: ${formatLKR(a.currentBalance)}` : formatLKR(a.currentBalance)})
                   </option>
                 ))}
               </select>
+              {(() => {
+                const selAcc = accounts.find((a) => a.id === sourceAccountId);
+                if (selAcc?.linkedParentAccountId) {
+                  const parent = accounts.find((a) => a.id === selAcc.linkedParentAccountId);
+                  return (
+                    <p className="text-[11px] text-indigo-600 dark:text-indigo-400 mt-1 font-medium">
+                      💳 Card linked to: {parent?.name || 'Bank Account'} (Balance deducts directly from bank)
+                    </p>
+                  );
+                }
+                return null;
+              })()}
             </div>
 
             {transactionType === 'TRANSFER' ? (
@@ -515,7 +633,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                 >
                   {accounts.map((a) => (
                     <option key={a.id} value={a.id}>
-                      {a.name} ({a.accountType === 'CREDIT_CARD' ? `Owed: ${formatLKR(a.currentBalance)}` : formatLKR(a.currentBalance)})
+                      {a.name} ({a.bankName ? `${a.bankName} • ` : ''}{a.accountType === 'CREDIT_CARD' ? `Owed: ${formatLKR(a.currentBalance)}` : formatLKR(a.currentBalance)})
                     </option>
                   ))}
                 </select>
@@ -527,7 +645,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                 </label>
                 <select
                   value={paymentMethod}
-                  onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
+                  onChange={(e) => handlePaymentMethodChange(e.target.value as PaymentMethod)}
                   className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
                 >
                   <option value="DEBIT_CARD">Debit Card</option>
@@ -541,6 +659,65 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
               </div>
             )}
           </div>
+
+          {/* Transfer Service Charge / Fee Section */}
+          {transactionType === 'TRANSFER' && (
+            <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
+                    Bank Service Charge / Fee (LKR)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="e.g. 30.00 (ATM) or 25.00 (CEFT)"
+                    value={transferFeeLkr}
+                    onChange={(e) => setTransferFeeLkr(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-semibold font-mono"
+                  />
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                    Optional fee charged by bank (e.g. ATM withdrawal fee)
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
+                    Fee Expense Category
+                  </label>
+                  <select
+                    value={transferFeeCategoryId}
+                    onChange={(e) => setTransferFeeCategoryId(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
+                  >
+                    <option value="">Default (Bank Charges and Fees)</option>
+                    {categories
+                      .filter((c) => c.type === 'EXPENSE')
+                      .map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              </div>
+
+              {Number(transferFeeLkr) > 0 && Number(actualLkrAmount) > 0 && (
+                <div className="p-2.5 rounded-lg bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 text-xs text-blue-900 dark:text-blue-200 flex flex-wrap items-center justify-between gap-2">
+                  <span>
+                    Total Deducted from Source: <strong>{formatLKR(addMoney(actualLkrAmount, transferFeeLkr))}</strong>
+                  </span>
+                  <span>
+                    Destination Receives: <strong>{formatLKR(actualLkrAmount)}</strong>
+                  </span>
+                  <span>
+                    Bank Charge Expense: <strong>{formatLKR(transferFeeLkr)}</strong>
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Classification & Funding Source ("Api wiyadam karana salli kohenda enne") */}
           {transactionType !== 'TRANSFER' && (

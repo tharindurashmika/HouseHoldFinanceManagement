@@ -80,17 +80,53 @@ export interface Account {
   ownershipType: OwnershipType;
   name: string;
   accountType: AccountType;
+  bankName?: string | null;
   cardLastFour?: string | null;
   linkedParentAccountId: string | null;
   linkedParentAccountName?: string | null;
   currency: string;
   openingBalance: string; // NUMERIC(15,2) string
+  openingBalanceDate?: string | null; // YYYY-MM-DD
   currentBalance: string; // NUMERIC(15,2) string — positive = asset balance (or for CREDIT_CARD, positive = amount owed / liability balance)
   creditLimit: string | null;
   status: 'ACTIVE' | 'ARCHIVED';
   notes: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface AccountBalanceBreakdown {
+  accountId: string;
+  accountName: string;
+  accountType: AccountType;
+  bankName: string | null;
+  ownershipType: OwnershipType;
+  ownerName: string;
+  cardLastFour: string | null;
+  linkedParentAccountId: string | null;
+  openingBalance: string;
+  openingBalanceDate: string;
+  totalIncome: string;
+  totalExpenses: string;
+  bankCharges: string;
+  withdrawals: string; // Transfers from Bank -> Cash (or into Cash from Bank)
+  deposits: string; // Transfers from Cash -> Bank (or into Bank from Cash)
+  incomingTransfers: string; // Other incoming transfers
+  outgoingTransfers: string; // Other outgoing transfers
+  currentCalculatedBalance: string;
+  status: 'ACTIVE' | 'ARCHIVED';
+}
+
+export interface DashboardAccountOverview {
+  commercialBankBalance: string;
+  bocBalance: string;
+  nsbBalance: string;
+  husbandCashBalance: string;
+  wifeCashBalance: string;
+  totalHouseholdBankBalance: string;
+  totalHouseholdCashBalance: string;
+  totalHouseholdAvailableFunds: string;
+  accountBreakdowns: AccountBalanceBreakdown[];
 }
 
 export interface AccountReconciliation {
@@ -145,6 +181,9 @@ export interface Transaction {
   recordedByName?: string;
   householdMemberScope: HouseholdMemberScope;
   fundingSource?: FundingSourceType;
+  transferFeeLkr?: string;
+  transferFeeCategoryId?: string | null;
+  parentTransactionId?: string | null;
   isEssential: boolean;
   isFixed: boolean;
   recurringScheduleId: string | null;
@@ -361,6 +400,7 @@ export interface DashboardSummary {
     fixedCommitmentRatioPct: number;
     essentialExpenseRatioPct: number;
   };
+  accountOverview: DashboardAccountOverview;
   charts: {
     incomeVsExpensesMonthly: Array<{
       monthLabel: string;

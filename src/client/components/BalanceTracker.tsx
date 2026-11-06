@@ -58,7 +58,10 @@ export const BalanceTracker: React.FC<BalanceTrackerProps> = ({
   const handleSave = async (b: AccountBalanceBreakdown) => {
     const raw = (inputs[b.accountId] || '').trim();
     if (!raw || isNaN(Number(raw))) {
-      setMessage({ ok: false, text: 'Enter the balance shown in your bank app first.' });
+      setMessage({
+        ok: false,
+        text: `Enter the balance shown in your ${b.accountType === 'CASH' ? 'cash wallet' : 'bank app'} first.`,
+      });
       return;
     }
     setSavingId(b.accountId);
@@ -69,10 +72,10 @@ export const BalanceTracker: React.FC<BalanceTrackerProps> = ({
         actualStatementBalance: toMoneyString(raw),
         createAdjustmentTransaction: false,
         reconciledByUserId: activeUserId,
-        notes: 'Quick bank balance check (Balance Tracker)',
+        notes: b.accountType === 'CASH' ? 'Cash count check (Balance Tracker)' : 'Quick bank balance check (Balance Tracker)',
       });
       setInputs((prev) => ({ ...prev, [b.accountId]: '' }));
-      setMessage({ ok: true, text: `Saved bank balance for ${b.accountName}.` });
+      setMessage({ ok: true, text: `Saved verified balance for ${b.accountName}.` });
       onSaved();
     } catch (err: any) {
       setMessage({ ok: false, text: err?.message || 'Failed to save balance' });
@@ -88,11 +91,11 @@ export const BalanceTracker: React.FC<BalanceTrackerProps> = ({
       <div>
         <h4 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
           <Scale className="w-4 h-4 text-blue-600" />
-          Running Balance Tracker — Bank App vs System
+          Running Balance Tracker — Bank Accounts & Cash Wallets
         </h4>
         <p className="text-xs text-slate-500 dark:text-slate-400">
-          Type the balance shown in your bank app and press Save. Difference = Bank balance − System balance.
-          A negative difference usually means an unrecorded fee or payment.
+          Enter the balance shown in your bank app or counted physical cash in hand, then click Save.
+          Difference = Actual balance − System balance. Updates instantly as you add expenses, income, or ATM withdrawals.
         </p>
       </div>
 
@@ -112,12 +115,12 @@ export const BalanceTracker: React.FC<BalanceTrackerProps> = ({
         <table className="w-full text-xs text-left">
           <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 font-semibold border-b border-slate-200 dark:border-slate-700">
             <tr>
-              <th className="p-2.5">Account</th>
+              <th className="p-2.5">Account / Wallet</th>
               <th className="p-2.5 text-right">System Balance (now)</th>
-              <th className="p-2.5 text-right">Last Bank Balance</th>
-              <th className="p-2.5 text-right">Difference</th>
+              <th className="p-2.5 text-right">Last Verified Balance</th>
+              <th className="p-2.5 text-right">Difference (Deviation)</th>
               <th className="p-2.5">Since Last Check</th>
-              <th className="p-2.5">Enter Bank Balance Now</th>
+              <th className="p-2.5">Verify Current Balance</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-700 dark:text-slate-300">
@@ -192,7 +195,7 @@ export const BalanceTracker: React.FC<BalanceTrackerProps> = ({
                       <input
                         type="number"
                         step="0.01"
-                        placeholder="Bank app balance"
+                        placeholder={b.accountType === 'CASH' ? 'Cash in wallet' : 'Bank app balance'}
                         value={inputs[b.accountId] || ''}
                         onChange={(e) => setInputs((prev) => ({ ...prev, [b.accountId]: e.target.value }))}
                         className="w-36 px-2 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-mono"

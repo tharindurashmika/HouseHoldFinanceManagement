@@ -219,20 +219,175 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
     }
   };
 
+  const handleSourceAccountChange = (newAccId: string) => {
+    setSourceAccountId(newAccId);
+    const acc = accounts.find((a) => a.id === newAccId);
+    if (!acc) return;
+
+    // 1. Auto-select Payment Method according to selected Account
+    if (acc.accountType === 'CASH') {
+      setPaymentMethod('CASH');
+    } else if (acc.accountType === 'DEBIT_CARD') {
+      setPaymentMethod('DEBIT_CARD');
+    } else if (acc.accountType === 'CREDIT_CARD') {
+      setPaymentMethod('CREDIT_CARD');
+    } else if (acc.accountType === 'BANK_CURRENT' || acc.accountType === 'BANK_SAVINGS') {
+      setPaymentMethod('BANK_TRANSFER');
+    } else if (acc.accountType === 'DIGITAL_WALLET') {
+      setPaymentMethod('DIGITAL_WALLET');
+    }
+
+    // 2. Auto-align Paid By Member if the account belongs specifically to Husband or Wife
+    if (acc.ownerUserId && paidOrReceivedByUserId !== acc.ownerUserId) {
+      setPaidOrReceivedByUserId(acc.ownerUserId);
+      if (transactionType === 'INCOME') {
+        setHouseholdMemberScope(acc.ownershipType === 'WIFE' ? 'WIFE' : 'HUSBAND');
+      }
+    }
+  };
+
   const handlePaymentMethodChange = (pm: PaymentMethod) => {
     setPaymentMethod(pm);
+    const selectedMember = members.find((m) => m.id === paidOrReceivedByUserId);
+    const isWife = selectedMember?.memberRole === 'WIFE';
+    const targetOwnership = isWife ? 'WIFE' : 'HUSBAND';
+
     if (pm === 'CASH') {
-      const cashAcc = accounts.find((a) => a.accountType === 'CASH');
-      if (cashAcc) setSourceAccountId(cashAcc.id);
+      // Auto-select physical cash wallet for current member
+      const memberCash = accounts.find(
+        (a) => a.accountType === 'CASH' && a.ownershipType === targetOwnership
+      );
+      const fallbackCash = accounts.find((a) => a.accountType === 'CASH');
+      if (memberCash) setSourceAccountId(memberCash.id);
+      else if (fallbackCash) setSourceAccountId(fallbackCash.id);
     } else if (pm === 'DEBIT_CARD') {
-      const cardAcc =
-        accounts.find((a) => a.accountType === 'DEBIT_CARD') ||
-        accounts.find((a) => a.accountType === 'BANK_CURRENT' || a.accountType === 'BANK_SAVINGS');
-      if (cardAcc) setSourceAccountId(cardAcc.id);
+      // Auto-select debit card for current member
+      const memberCard = accounts.find(
+        (a) => a.accountType === 'DEBIT_CARD' && a.ownershipType === targetOwnership
+      );
+      const fallbackCard = accounts.find((a) => a.accountType === 'DEBIT_CARD');
+      if (memberCard) setSourceAccountId(memberCard.id);
+      else if (fallbackCard) setSourceAccountId(fallbackCard.id);
     } else if (pm === 'CREDIT_CARD') {
       const creditAcc = accounts.find((a) => a.accountType === 'CREDIT_CARD');
       if (creditAcc) setSourceAccountId(creditAcc.id);
+    } else if (pm === 'BANK_TRANSFER' || pm === 'DIRECT_DEBIT') {
+      // Auto-select bank account for current member
+      const memberBank = accounts.find(
+        (a) =>
+          (a.accountType === 'BANK_CURRENT' || a.accountType === 'BANK_SAVINGS') &&
+          !a.linkedParentAccountId &&
+          a.ownershipType === targetOwnership
+      );
+      const fallbackBank = accounts.find(
+        (a) =>
+          (a.accountType === 'BANK_CURRENT' || a.accountType === 'BANK_SAVINGS') &&
+          !a.linkedParentAccountId
+      );
+      if (memberBank) setSourceAccountId(memberBank.id);
+      else if (fallbackBank) setSourceAccountId(fallbackBank.id);
     }
+  };
+
+  const handlePaidByMemberChange = (newUserId: string) => {
+    setPaidOrReceivedByUserId(newUserId);
+    const member = members.find((m) => m.id === newUserId);
+    const isWife = member?.memberRole === 'WIFE';
+    const targetOwnership = isWife ? 'WIFE' : 'HUSBAND';
+
+    if (transactionType === 'INCOME') {
+      setHouseholdMemberScope(targetOwnership);
+    }
+
+    // If currently selected account belongs to the opposite member, switch to this member's corresponding account
+    const currentAcc = accounts.find((a) => a.id === sourceAccountId);
+    if (currentAcc && currentAcc.ownershipType !== 'JOINT' && currentAcc.ownershipType !== targetOwnership) {
+      const matchingSameType = accounts.find(
+        (a) => a.accountType === currentAcc.accountType && a.ownershipType === targetOwnership
+      );
+      if (matchingSameType) {
+        setSourceAccountId(matchingSameType.id);
+      } else {
+        const anyMemberAcc = accounts.find((a) => a.ownershipType === targetOwnership);
+        if (anyMemberAcc) {
+          handleSourceAccountChange(anyMemberAcc.id);
+        }
+      }
+    }
+  };
+
+  const renderAccountOptions = (accs: Account[]) => {
+    const cashWallets = accs.filter((a) => a.accountType === 'CASH');
+    const debitCards = accs.filter((a) => a.accountType === 'DEBIT_CARD');
+    const creditCards = accs.filter((a) => a.accountType === 'CREDIT_CARD');
+    const bankAccounts = accs.filter(
+      (a) => (a.accountType === 'BANK_CURRENT' || a.accountType === 'BANK_SAVINGS') && !a.linkedParentAccountId
+    );
+    const otherAccounts = accs.filter(
+      (a) =>
+        a.accountType === 'DIGITAL_WALLET' ||
+        (!cashWallets.includes(a) &&
+          !debitCards.includes(a) &&
+          !creditCards.includes(a) &&
+          !bankAccounts.includes(a))
+    );
+
+    return (
+      <>
+        {cashWallets.length > 0 && (
+          <optgroup label="💵 Physical Cash Wallets (Husband & Wife)">
+            {cashWallets.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name} ({a.ownershipType === 'HUSBAND' ? 'Tharindu' : a.ownershipType === 'WIFE' ? 'Sudu' : 'Joint'}) • Available: {formatLKR(a.currentBalance)}
+              </option>
+            ))}
+          </optgroup>
+        )}
+
+        {debitCards.length > 0 && (
+          <optgroup label="💳 Debit Cards (Linked to Bank Accounts)">
+            {debitCards.map((a) => {
+              const parent = accs.find((p) => p.id === a.linkedParentAccountId);
+              return (
+                <option key={a.id} value={a.id}>
+                  {a.name} {a.cardLastFour ? `(•••• ${a.cardLastFour})` : ''} • {parent ? `Debits ${parent.name}` : `Bal: ${formatLKR(a.currentBalance)}`}
+                </option>
+              );
+            })}
+          </optgroup>
+        )}
+
+        {creditCards.length > 0 && (
+          <optgroup label="💳 Credit Cards (Liabilities)">
+            {creditCards.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name} {a.cardLastFour ? `(•••• ${a.cardLastFour})` : ''} • Owed: {formatLKR(a.currentBalance)}
+              </option>
+            ))}
+          </optgroup>
+        )}
+
+        {bankAccounts.length > 0 && (
+          <optgroup label="🏦 Bank Accounts (Online / Transfer / Counter)">
+            {bankAccounts.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name} ({a.bankName || a.accountType}) • Balance: {formatLKR(a.currentBalance)}
+              </option>
+            ))}
+          </optgroup>
+        )}
+
+        {otherAccounts.length > 0 && (
+          <optgroup label="📱 Digital Wallets & Other">
+            {otherAccounts.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name} ({a.accountType}) • Balance: {formatLKR(a.currentBalance)}
+              </option>
+            ))}
+          </optgroup>
+        )}
+      </>
+    );
   };
 
   if (!isOpen) return null;
@@ -425,7 +580,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
               <select
                 required
                 value={paidOrReceivedByUserId}
-                onChange={(e) => setPaidOrReceivedByUserId(e.target.value)}
+                onChange={(e) => handlePaidByMemberChange(e.target.value)}
                 className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
               >
                 {members.map((m) => (
@@ -597,22 +752,40 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
               <select
                 required
                 value={sourceAccountId}
-                onChange={(e) => setSourceAccountId(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
+                onChange={(e) => handleSourceAccountChange(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-medium"
               >
-                {accounts.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name} ({a.bankName ? `${a.bankName} • ` : ''}{a.accountType === 'CREDIT_CARD' ? `Owed: ${formatLKR(a.currentBalance)}` : formatLKR(a.currentBalance)})
-                  </option>
-                ))}
+                {renderAccountOptions(accounts)}
               </select>
               {(() => {
                 const selAcc = accounts.find((a) => a.id === sourceAccountId);
-                if (selAcc?.linkedParentAccountId) {
+                if (!selAcc) return null;
+                if (selAcc.accountType === 'CASH') {
+                  return (
+                    <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1 font-semibold flex items-center gap-1">
+                      <span>💵</span> Physical Cash Wallet ({selAcc.ownershipType === 'HUSBAND' ? "Tharindu's Cash" : selAcc.ownershipType === 'WIFE' ? "Sudu's Cash" : 'Shared Household Cash'})
+                    </p>
+                  );
+                }
+                if (selAcc.linkedParentAccountId) {
                   const parent = accounts.find((a) => a.id === selAcc.linkedParentAccountId);
                   return (
-                    <p className="text-[11px] text-indigo-600 dark:text-indigo-400 mt-1 font-medium">
-                      💳 Card linked to: {parent?.name || 'Bank Account'} (Balance deducts directly from bank)
+                    <p className="text-[11px] text-indigo-600 dark:text-indigo-400 mt-1 font-medium flex items-center gap-1">
+                      <span>💳</span> Debit Card linked to {parent?.name || 'Bank Account'} (Balance deducts from bank)
+                    </p>
+                  );
+                }
+                if (selAcc.accountType === 'CREDIT_CARD') {
+                  return (
+                    <p className="text-[11px] text-rose-600 dark:text-rose-400 mt-1 font-medium flex items-center gap-1">
+                      <span>💳</span> Credit Card Liability (Expenses increase credit debt)
+                    </p>
+                  );
+                }
+                if (selAcc.accountType === 'BANK_CURRENT' || selAcc.accountType === 'BANK_SAVINGS') {
+                  return (
+                    <p className="text-[11px] text-blue-600 dark:text-blue-400 mt-1 font-medium flex items-center gap-1">
+                      <span>🏦</span> Bank Account ({selAcc.bankName || 'Direct Account'})
                     </p>
                   );
                 }
@@ -629,14 +802,21 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                   required
                   value={destinationAccountId}
                   onChange={(e) => setDestinationAccountId(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-medium"
                 >
-                  {accounts.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name} ({a.bankName ? `${a.bankName} • ` : ''}{a.accountType === 'CREDIT_CARD' ? `Owed: ${formatLKR(a.currentBalance)}` : formatLKR(a.currentBalance)})
-                    </option>
-                  ))}
+                  {renderAccountOptions(accounts)}
                 </select>
+                {(() => {
+                  const destAcc = accounts.find((a) => a.id === destinationAccountId);
+                  if (destAcc?.accountType === 'CASH') {
+                    return (
+                      <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1 font-semibold flex items-center gap-1">
+                        <span>💵</span> Cash received into {destAcc.name}
+                      </p>
+                    );
+                  }
+                  return null;
+                })()}
               </div>
             ) : (
               <div>
@@ -646,16 +826,19 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                 <select
                   value={paymentMethod}
                   onChange={(e) => handlePaymentMethodChange(e.target.value as PaymentMethod)}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-medium"
                 >
-                  <option value="DEBIT_CARD">Debit Card</option>
-                  <option value="CREDIT_CARD">Credit Card</option>
-                  <option value="BANK_TRANSFER">Bank Transfer / Online Banking</option>
-                  <option value="CASH">Cash</option>
-                  <option value="DIRECT_DEBIT">Direct Debit / Standing Order</option>
-                  <option value="DIGITAL_WALLET">Digital Wallet / QR</option>
+                  <option value="DEBIT_CARD">💳 Debit Card</option>
+                  <option value="CREDIT_CARD">💳 Credit Card</option>
+                  <option value="BANK_TRANSFER">🌐 Bank Transfer / Online Banking</option>
+                  <option value="CASH">💵 Cash</option>
+                  <option value="DIRECT_DEBIT">Standing Order / Direct Debit</option>
+                  <option value="DIGITAL_WALLET">📱 Digital Wallet / QR</option>
                   <option value="OTHER">Other</option>
                 </select>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Auto-selected based on account or change anytime
+                </p>
               </div>
             )}
           </div>

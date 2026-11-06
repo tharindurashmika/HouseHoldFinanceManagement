@@ -388,7 +388,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   Detailed Account Balances & Transaction Audit Ledger
                 </h4>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Opening Balance + Income + In Transfers - Out Transfers - Expenses - Withdrawals - Bank Fees = Current Balance
+                  Bank Accounts: Opening + Income − Expenses − ATM Withdrawals + Cash Deposits − Fees. | Cash Wallets: Opening + ATM Cash Received (+) − Cash Expenses (−) − Bank Deposits.
                 </p>
               </div>
 
@@ -425,8 +425,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     <th className="p-2.5 text-right">Opening Bal</th>
                     <th className="p-2.5 text-right text-emerald-600">Income (+)</th>
                     <th className="p-2.5 text-right text-rose-600">Expenses (-)</th>
-                    <th className="p-2.5 text-right text-slate-600">Withdrawals</th>
-                    <th className="p-2.5 text-right text-slate-600">Deposits</th>
+                    <th className="p-2.5 text-right text-slate-600">ATM Out / Cash In</th>
+                    <th className="p-2.5 text-right text-slate-600">Bank Deposit</th>
                     <th className="p-2.5 text-right text-amber-600">Bank Fees (-)</th>
                     <th className="p-2.5 text-right font-bold text-slate-900 dark:text-white">Calculated Bal</th>
                     <th className="p-2.5 text-center">Actions</th>
@@ -469,11 +469,39 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                           <td className="p-2.5 text-right text-rose-600 font-semibold whitespace-nowrap">
                             {Number(b.totalExpenses) > 0 ? `-${formatLKR(b.totalExpenses, { showDecimals: false })}` : '—'}
                           </td>
-                          <td className="p-2.5 text-right text-slate-600 whitespace-nowrap">
-                            {Number(b.withdrawals) > 0 ? formatLKR(b.withdrawals, { showDecimals: false }) : '—'}
+                          <td className="p-2.5 text-right whitespace-nowrap">
+                            {Number(b.withdrawals) > 0 ? (
+                              b.accountType === 'CASH' ? (
+                                <div>
+                                  <span className="text-emerald-600 font-semibold">+{formatLKR(b.withdrawals, { showDecimals: false })}</span>
+                                  <span className="block text-[9px] text-emerald-600/70 font-sans">from ATM</span>
+                                </div>
+                              ) : (
+                                <div>
+                                  <span className="text-slate-600">-{formatLKR(b.withdrawals, { showDecimals: false })}</span>
+                                  <span className="block text-[9px] text-slate-400 font-sans">to Cash</span>
+                                </div>
+                              )
+                            ) : (
+                              '—'
+                            )}
                           </td>
-                          <td className="p-2.5 text-right text-slate-600 whitespace-nowrap">
-                            {Number(b.deposits) > 0 ? formatLKR(b.deposits, { showDecimals: false }) : '—'}
+                          <td className="p-2.5 text-right whitespace-nowrap">
+                            {Number(b.deposits) > 0 ? (
+                              b.accountType === 'CASH' ? (
+                                <div>
+                                  <span className="text-slate-600">-{formatLKR(b.deposits, { showDecimals: false })}</span>
+                                  <span className="block text-[9px] text-slate-400 font-sans">to Bank</span>
+                                </div>
+                              ) : (
+                                <div>
+                                  <span className="text-emerald-600 font-semibold">+{formatLKR(b.deposits, { showDecimals: false })}</span>
+                                  <span className="block text-[9px] text-emerald-600/70 font-sans">from Cash</span>
+                                </div>
+                              )
+                            ) : (
+                              '—'
+                            )}
                           </td>
                           <td className="p-2.5 text-right text-amber-600 font-semibold whitespace-nowrap">
                             {Number(b.bankCharges) > 0 ? `-${formatLKR(b.bankCharges, { showDecimals: false })}` : '—'}

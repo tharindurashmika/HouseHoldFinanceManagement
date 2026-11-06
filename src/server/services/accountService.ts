@@ -1,5 +1,5 @@
 import Decimal from 'decimal.js';
-import crypto from 'crypto';
+import { generateUUID } from '../../shared/uuid';
 import { query, withTransaction, type DbExecutor } from '../db/pool';
 import { AppError } from '../middleware/error';
 import { addMoney, compareMoney, subMoney, toDecimal, toMoneyString } from '../../shared/decimal';
@@ -69,7 +69,7 @@ export async function createAccount(
     notes?: string | null;
   }
 ): Promise<Account> {
-  const id = crypto.randomUUID();
+  const id = generateUUID();
   const openBal = toMoneyString(input.openingBalance);
   const openDate = input.openingBalanceDate || '2026-11-01';
 
@@ -550,7 +550,7 @@ export async function reconcileAccountBalance(
     // The reconciliation only records the bank-reported balance so that the difference stays visible
     // until the missing transactions (e.g. bank fees) are recorded.
 
-    const recId = crypto.randomUUID();
+    const recId = generateUUID();
     const recRes = await tx.query(
       `INSERT INTO account_reconciliations (
         id, account_id, reconciled_by_user_id, reconciliation_date,

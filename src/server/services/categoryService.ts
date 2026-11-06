@@ -1,4 +1,4 @@
-const crypto = globalThis.crypto;
+import { generateUUID } from '../../shared/uuid';
 import { query } from '../db/pool';
 import { AppError } from '../middleware/error';
 import type { Category } from '../../shared/types';
@@ -59,7 +59,7 @@ export async function createCategory(
     sortOrder?: number;
   }
 ): Promise<Category> {
-  const id = crypto.randomUUID();
+  const id = generateUUID();
   const res = await query(
     `INSERT INTO categories (
       id, household_id, parent_id, name, type, default_essentiality, is_fixed_default, icon, color, is_system_seeded, sort_order

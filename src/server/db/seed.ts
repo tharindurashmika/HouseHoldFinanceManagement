@@ -1,5 +1,5 @@
-import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
+import { generateUUID } from '../../shared/uuid';
 import { query, withTransaction } from './pool';
 import { computeAccountBalanceDelta } from '../../shared/calculations';
 import { addMoney } from '../../shared/decimal';
@@ -534,7 +534,7 @@ export async function ensureAccountsAndCategoriesMigrated(executor?: { query: ty
       [SEED_IDS.household]
     );
     if (existingFeeCat.rows.length === 0) {
-      const catId = crypto.randomUUID();
+      const catId = generateUUID();
       await db.query(
         `INSERT INTO categories (
           id, household_id, parent_id, name, type, default_essentiality, is_fixed_default, icon, color, is_system_seeded, sort_order
@@ -589,7 +589,7 @@ export async function ensureSeeded(): Promise<void> {
 
     let sortOrder = 10;
     for (const cat of INITIAL_CATEGORIES) {
-      const catId = crypto.randomUUID();
+      const catId = generateUUID();
       catMap.set(cat.name, catId);
       await tx.query(
         `INSERT INTO categories (
@@ -612,7 +612,7 @@ export async function ensureSeeded(): Promise<void> {
       if (cat.subcategories) {
         let subOrder = 1;
         for (const sub of cat.subcategories) {
-          const subId = crypto.randomUUID();
+          const subId = generateUUID();
           subCatMap.set(`${cat.name}::${sub.name}`, subId);
           await tx.query(
             `INSERT INTO categories (
@@ -670,9 +670,9 @@ export async function ensureSeeded(): Promise<void> {
     }
 
     // 5. Seed Loans (Tharindu 25L Commercial Bank #3793419, Sudu 10L BOC, Bike Finance 13,000)
-    const loan1Id = crypto.randomUUID();
-    const loan2Id = crypto.randomUUID();
-    const bikeLoanId = crypto.randomUUID();
+    const loan1Id = generateUUID();
+    const loan2Id = generateUUID();
+    const bikeLoanId = generateUUID();
 
     await tx.query(
       `INSERT INTO loans (
@@ -704,9 +704,9 @@ export async function ensureSeeded(): Promise<void> {
 
     // 6. Seed Digital Subscriptions (Gemini AI 1500 first 3mo -> 6500 later, Apple 200GB $3, plus ChatGPT/Claude)
     const digCatId = catMap.get('Digital Subscriptions and Technology')!;
-    const subGeminiId = crypto.randomUUID();
-    const subAppleId = crypto.randomUUID();
-    const subChatGptId = crypto.randomUUID();
+    const subGeminiId = generateUUID();
+    const subAppleId = generateUUID();
+    const subChatGptId = generateUUID();
 
     await tx.query(
       `INSERT INTO subscriptions (
@@ -750,13 +750,13 @@ export async function ensureSeeded(): Promise<void> {
     const loanCatId = catMap.get('Loans and Financial Commitments')!;
     const persCatId = catMap.get('Personal and Other Expenses')!;
 
-    const recRentId = crypto.randomUUID();
-    const recKiuId = crypto.randomUUID();
-    const recElecId = crypto.randomUUID();
-    const recWaterId = crypto.randomUUID();
-    const recLoan1Id = crypto.randomUUID();
-    const recLoan2Id = crypto.randomUUID();
-    const recBikeId = crypto.randomUUID();
+    const recRentId = generateUUID();
+    const recKiuId = generateUUID();
+    const recElecId = generateUUID();
+    const recWaterId = generateUUID();
+    const recLoan1Id = generateUUID();
+    const recLoan2Id = generateUUID();
+    const recBikeId = generateUUID();
 
     await tx.query(
       `INSERT INTO recurring_schedules (
@@ -844,7 +844,7 @@ export async function ensureSeeded(): Promise<void> {
       notes?: string;
       items?: Array<{ subCatName: string; itemName: string; qty: string; amountLkr: string }>;
     }) => {
-      const txId = crypto.randomUUID();
+      const txId = generateUUID();
       const catId = p.catName ? catMap.get(p.catName) || null : null;
       const subCatId =
         p.catName && p.subCatName ? subCatMap.get(`${p.catName}::${p.subCatName}`) || null : null;
@@ -900,7 +900,7 @@ export async function ensureSeeded(): Promise<void> {
           await tx.query(
             `INSERT INTO transaction_items (id, transaction_id, subcategory_id, item_name, quantity, amount_lkr)
              VALUES ($1, $2, $3, $4, $5, $6)`,
-            [crypto.randomUUID(), txId, itemSubId, item.itemName, item.qty, item.amountLkr]
+            [generateUUID(), txId, itemSubId, item.itemName, item.qty, item.amountLkr]
           );
         }
       }
@@ -1077,7 +1077,7 @@ export async function ensureSeeded(): Promise<void> {
         total_paid_lkr, principal_component_lkr, interest_component_lkr, fees_component_lkr,
         balance_after_payment, paid_by_user_id, status, notes
       ) VALUES ($1, $2, $3, 22, '2026-10-12', '2026-10-12', 59000.00, 35000.00, 24000.00, 0.00, 1980000.00, $4, 'PAID', 'Oct 2026 Installment (Ref 3793419)')`,
-      [crypto.randomUUID(), loan1Id, octLoan1TxId, SEED_IDS.husband]
+      [generateUUID(), loan1Id, octLoan1TxId, SEED_IDS.husband]
     );
 
     const octLoan2TxId = await insertDemoTx({
@@ -1104,7 +1104,7 @@ export async function ensureSeeded(): Promise<void> {
         total_paid_lkr, principal_component_lkr, interest_component_lkr, fees_component_lkr,
         balance_after_payment, paid_by_user_id, status, notes
       ) VALUES ($1, $2, $3, 22, '2026-10-25', '2026-10-25', 29000.00, 19500.00, 9500.00, 0.00, 740000.00, $4, 'PAID', 'Oct 2026 BOC Loan Installment')`,
-      [crypto.randomUUID(), loan2Id, octLoan2TxId, SEED_IDS.wife]
+      [generateUUID(), loan2Id, octLoan2TxId, SEED_IDS.wife]
     );
 
     const octBikeTxId = await insertDemoTx({
@@ -1131,7 +1131,7 @@ export async function ensureSeeded(): Promise<void> {
         total_paid_lkr, principal_component_lkr, interest_component_lkr, fees_component_lkr,
         balance_after_payment, paid_by_user_id, status, notes
       ) VALUES ($1, $2, $3, 24, '2026-10-15', '2026-10-15', 13000.00, 8200.00, 4800.00, 0.00, 312000.00, $4, 'PAID', 'Oct 2026 Bike Finance')`,
-      [crypto.randomUUID(), bikeLoanId, octBikeTxId, SEED_IDS.husband]
+      [generateUUID(), bikeLoanId, octBikeTxId, SEED_IDS.husband]
     );
 
     // KIU Degree Payment (20,000 till March 2027)
@@ -1272,14 +1272,14 @@ export async function ensureSeeded(): Promise<void> {
           `INSERT INTO budgets (
             id, household_id, year, month, category_id, subcategory_id, member_scope, allocated_amount_lkr, alert_threshold_pct
           ) VALUES ($1, $2, $3, $4, $5, $6, 'HOUSEHOLD', $7, 80)`,
-          [crypto.randomUUID(), SEED_IDS.household, year, month, b.catId, b.subId, b.amount]
+          [generateUUID(), SEED_IDS.household, year, month, b.catId, b.subId, b.amount]
         );
       }
     }
 
     // 10. Seed Savings Goals & Contributions
-    const emergencyGoalId = crypto.randomUUID();
-    const loanSettlementGoalId = crypto.randomUUID();
+    const emergencyGoalId = generateUUID();
+    const loanSettlementGoalId = generateUUID();
 
     await tx.query(
       `INSERT INTO savings_goals (
@@ -1308,8 +1308,8 @@ export async function ensureSeeded(): Promise<void> {
       ($1, $3, NULL, $5, '2026-10-26', 40000.00, 'DEPOSIT', 'Oct 2026 Emergency Fund allocation'),
       ($2, $4, NULL, $6, '2026-10-26', 30000.00, 'DEPOSIT', 'Oct 2026 allocation from Wife OT')`,
       [
-        crypto.randomUUID(),
-        crypto.randomUUID(),
+        generateUUID(),
+        generateUUID(),
         emergencyGoalId,
         loanSettlementGoalId,
         SEED_IDS.husband,

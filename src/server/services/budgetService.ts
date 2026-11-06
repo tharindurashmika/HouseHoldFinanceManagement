@@ -1,4 +1,4 @@
-const crypto = globalThis.crypto;
+import { generateUUID } from '../../shared/uuid';
 import { query } from '../db/pool';
 import { AppError } from '../middleware/error';
 import { toMoneyString } from '../../shared/decimal';
@@ -112,7 +112,7 @@ export async function upsertBudget(
       [amt, threshold, id]
     );
   } else {
-    id = crypto.randomUUID();
+    id = generateUUID();
     await query(
       `INSERT INTO budgets (
         id, household_id, year, month, category_id, subcategory_id, member_scope, allocated_amount_lkr, alert_threshold_pct

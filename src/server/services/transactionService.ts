@@ -1,4 +1,4 @@
-import crypto from 'crypto';
+import { generateUUID } from '../../shared/uuid';
 import { query, withTransaction, type DbExecutor } from '../db/pool';
 import { AppError } from '../middleware/error';
 import { addMoney, compareMoney, toMoneyString } from '../../shared/decimal';
@@ -209,7 +209,7 @@ export async function createTransactionInTx(
   householdId: string,
   input: CreateTransactionInput
 ): Promise<string> {
-  const txId = crypto.randomUUID();
+  const txId = generateUUID();
   const actualLkr = toMoneyString(input.actualLkrAmount);
   const origAmt = toMoneyString(input.originalAmount);
 
@@ -280,7 +280,7 @@ export async function createTransactionInTx(
         `INSERT INTO transaction_items (id, transaction_id, subcategory_id, item_name, quantity, amount_lkr)
          VALUES ($1, $2, $3, $4, $5, $6)`,
         [
-          crypto.randomUUID(),
+          generateUUID(),
           txId,
           item.subcategoryId || null,
           item.itemName.trim(),
@@ -318,7 +318,7 @@ export async function createTransactionInTx(
   // If there is an associated bank transfer/service fee, record it as a linked child expense
   if (hasFee) {
     const feeLkr = toMoneyString(input.transferFeeLkr!);
-    const childTxId = crypto.randomUUID();
+    const childTxId = generateUUID();
     await tx.query(
       `INSERT INTO transactions (
         id, household_id, transaction_date, transaction_type, description,
@@ -513,7 +513,7 @@ export async function updateTransaction(
           `INSERT INTO transaction_items (id, transaction_id, subcategory_id, item_name, quantity, amount_lkr)
            VALUES ($1, $2, $3, $4, $5, $6)`,
           [
-            crypto.randomUUID(),
+            generateUUID(),
             transactionId,
             item.subcategoryId || null,
             item.itemName.trim(),
@@ -549,7 +549,7 @@ export async function updateTransaction(
     // 5. If new transfer has fee, insert new child fee transaction
     if (hasFee) {
       const feeLkr = toMoneyString(input.transferFeeLkr!);
-      const childTxId = crypto.randomUUID();
+      const childTxId = generateUUID();
       await tx.query(
         `INSERT INTO transactions (
           id, household_id, transaction_date, transaction_type, description,

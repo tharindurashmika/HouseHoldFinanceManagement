@@ -1,4 +1,4 @@
-const crypto = globalThis.crypto;
+import { generateUUID } from '../../shared/uuid';
 import { query, withTransaction } from '../db/pool';
 import { AppError } from '../middleware/error';
 import { compareMoney, subMoney, toDecimal, toMoneyString } from '../../shared/decimal';
@@ -114,7 +114,7 @@ export async function createLoan(
     notes?: string | null;
   }
 ): Promise<Loan> {
-  const id = crypto.randomUUID();
+  const id = generateUUID();
   await query(
     `INSERT INTO loans (
       id, household_id, owner_user_id, ownership_type, loan_name, loan_reference_no, loan_type, lender_name,
@@ -314,7 +314,7 @@ export async function payLoanInstallment(
         balance_after_payment, paid_by_user_id, status, notes
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'PAID', $13)`,
       [
-        crypto.randomUUID(),
+        generateUUID(),
         loan.id,
         txId,
         paidInstallmentsSoFar,

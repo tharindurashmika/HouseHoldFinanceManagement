@@ -1,4 +1,4 @@
-const crypto = globalThis.crypto;
+import { generateUUID } from '../../shared/uuid';
 import { query, withTransaction } from '../db/pool';
 import { AppError } from '../middleware/error';
 import { divMoney, toMoneyString } from '../../shared/decimal';
@@ -77,7 +77,7 @@ export async function createSubscription(
     notes?: string | null;
   }
 ): Promise<Subscription> {
-  const id = crypto.randomUUID();
+  const id = generateUUID();
   await query(
     `INSERT INTO subscriptions (
       id, household_id, used_by_user_id, member_scope, name, provider,

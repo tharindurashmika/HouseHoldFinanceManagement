@@ -1,4 +1,4 @@
-const crypto = globalThis.crypto;
+import { generateUUID } from '../../shared/uuid';
 import { query, withTransaction } from '../db/pool';
 import { AppError } from '../middleware/error';
 import { toMoneyString } from '../../shared/decimal';
@@ -89,7 +89,7 @@ export async function createRecurringSchedule(
     notes?: string | null;
   }
 ): Promise<RecurringSchedule> {
-  const id = crypto.randomUUID();
+  const id = generateUUID();
   await query(
     `INSERT INTO recurring_schedules (
       id, household_id, title, transaction_type, category_id, subcategory_id,

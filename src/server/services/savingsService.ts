@@ -1,4 +1,4 @@
-const crypto = globalThis.crypto;
+import { generateUUID } from '../../shared/uuid';
 import { query, withTransaction } from '../db/pool';
 import { AppError } from '../middleware/error';
 import { addMoney, compareMoney, subMoney, toMoneyString } from '../../shared/decimal';
@@ -118,7 +118,7 @@ export async function createSavingsGoal(
     notes?: string | null;
   }
 ): Promise<SavingsGoal> {
-  const id = crypto.randomUUID();
+  const id = generateUUID();
   await query(
     `INSERT INTO savings_goals (
       id, household_id, owner_scope, owner_user_id, name,
@@ -207,7 +207,7 @@ export async function addSavingsContribution(
         id, savings_goal_id, transaction_id, contributed_by_user_id, contribution_date, amount_lkr, type, notes
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
       [
-        crypto.randomUUID(),
+        generateUUID(),
         goalId,
         txId,
         input.contributedByUserId,

@@ -259,6 +259,294 @@ export const INITIAL_CATEGORIES: CategorySeedDef[] = [
   },
 ];
 
+export interface AccountSeedDef {
+  id: string;
+  ownerUserId: string | null;
+  ownershipType: 'HUSBAND' | 'WIFE' | 'JOINT';
+  name: string;
+  accountType: 'BANK_SAVINGS' | 'BANK_CURRENT' | 'CASH' | 'CREDIT_CARD' | 'DEBIT_CARD' | 'DIGITAL_WALLET' | 'OTHER';
+  bankName: string | null;
+  openingBalanceDate: string;
+  cardLastFour: string | null;
+  linkedParentAccountId: string | null;
+  openingBalance: string;
+  creditLimit: string | null;
+  notes: string;
+}
+
+export const INITIAL_ACCOUNTS: AccountSeedDef[] = [
+  // BANK ACCOUNTS
+  {
+    id: SEED_IDS.accounts.husbandCommercialBank,
+    ownerUserId: SEED_IDS.husband,
+    ownershipType: 'HUSBAND',
+    name: 'Commercial Bank Account - Tharindu',
+    accountType: 'BANK_CURRENT',
+    bankName: 'Commercial Bank',
+    openingBalanceDate: '2026-11-01',
+    cardLastFour: null,
+    linkedParentAccountId: null,
+    openingBalance: '185000.00',
+    creditLimit: null,
+    notes: 'Tharindu primary Commercial Bank salary account (Salary arrives 10th-12th, sometimes in partial tranches)',
+  },
+  {
+    id: SEED_IDS.accounts.wifeCommercialBank,
+    ownerUserId: SEED_IDS.wife,
+    ownershipType: 'WIFE',
+    name: 'Commercial Bank Account - Wife (Sudu)',
+    accountType: 'BANK_SAVINGS',
+    bankName: 'Commercial Bank',
+    openingBalanceDate: '2026-11-01',
+    cardLastFour: null,
+    linkedParentAccountId: null,
+    openingBalance: '65000.00',
+    creditLimit: null,
+    notes: 'Wife Commercial Bank account',
+  },
+  {
+    id: SEED_IDS.accounts.wifeNsbBank,
+    ownerUserId: SEED_IDS.wife,
+    ownershipType: 'WIFE',
+    name: 'NSB Bank Account - Wife (Sudu)',
+    accountType: 'BANK_SAVINGS',
+    bankName: 'National Savings Bank',
+    openingBalanceDate: '2026-11-01',
+    cardLastFour: null,
+    linkedParentAccountId: null,
+    openingBalance: '140000.00',
+    creditLimit: null,
+    notes: 'Wife NSB account (Salary + ~100k OT arrives 24th-26th with no delay)',
+  },
+  {
+    id: SEED_IDS.accounts.husbandNsbBank,
+    ownerUserId: SEED_IDS.husband,
+    ownershipType: 'HUSBAND',
+    name: 'NSB Bank Account - Tharindu (ME)',
+    accountType: 'BANK_SAVINGS',
+    bankName: 'National Savings Bank',
+    openingBalanceDate: '2026-11-01',
+    cardLastFour: null,
+    linkedParentAccountId: null,
+    openingBalance: '450000.00',
+    creditLimit: null,
+    notes: 'Tharindu NSB savings reserve account (Ituru karapu salli)',
+  },
+  {
+    id: SEED_IDS.accounts.wifeBocBank,
+    ownerUserId: SEED_IDS.wife,
+    ownershipType: 'WIFE',
+    name: 'BOC Bank Account - Wife (Sudu)',
+    accountType: 'BANK_SAVINGS',
+    bankName: 'Bank of Ceylon',
+    openingBalanceDate: '2026-11-01',
+    cardLastFour: null,
+    linkedParentAccountId: null,
+    openingBalance: '55000.00',
+    creditLimit: null,
+    notes: 'Wife Bank of Ceylon (BOC) account (linked to Sudu 10 Lakhs BOC Loan)',
+  },
+  {
+    id: SEED_IDS.accounts.husbandCash,
+    ownerUserId: SEED_IDS.husband,
+    ownershipType: 'HUSBAND',
+    name: "Husband's Cash Wallet (Tharindu)",
+    accountType: 'CASH',
+    bankName: 'Physical Cash',
+    openingBalanceDate: '2026-11-01',
+    cardLastFour: null,
+    linkedParentAccountId: null,
+    openingBalance: '15000.00',
+    creditLimit: null,
+    notes: 'Tharindu personal physical cash wallet',
+  },
+  {
+    id: SEED_IDS.accounts.wifeCash,
+    ownerUserId: SEED_IDS.wife,
+    ownershipType: 'WIFE',
+    name: "Wife's Cash Wallet (Sudu)",
+    accountType: 'CASH',
+    bankName: 'Physical Cash',
+    openingBalanceDate: '2026-11-01',
+    cardLastFour: null,
+    linkedParentAccountId: null,
+    openingBalance: '10000.00',
+    creditLimit: null,
+    notes: 'Sudu personal physical cash wallet',
+  },
+  {
+    id: SEED_IDS.accounts.householdCash,
+    ownerUserId: null,
+    ownershipType: 'JOINT',
+    name: 'Household Cash Wallet',
+    accountType: 'CASH',
+    bankName: 'Physical Cash',
+    openingBalanceDate: '2026-11-01',
+    cardLastFour: null,
+    linkedParentAccountId: null,
+    openingBalance: '25000.00',
+    creditLimit: null,
+    notes: 'Shared household cash wallet',
+  },
+
+  // CARDS (5 Cards)
+  {
+    id: SEED_IDS.accounts.husbandComCard1143,
+    ownerUserId: SEED_IDS.husband,
+    ownershipType: 'HUSBAND',
+    name: 'Commercial Bank Card •••• 1143 (Tharindu)',
+    accountType: 'DEBIT_CARD',
+    bankName: 'Commercial Bank',
+    openingBalanceDate: '2026-11-01',
+    cardLastFour: '1143',
+    linkedParentAccountId: SEED_IDS.accounts.husbandCommercialBank,
+    openingBalance: '0.00',
+    creditLimit: null,
+    notes: 'Tharindu Commercial Bank Card #1 ending in 1143 (linked to Commercial Bank Account - Tharindu)',
+  },
+  {
+    id: SEED_IDS.accounts.husbandComCard0484,
+    ownerUserId: SEED_IDS.husband,
+    ownershipType: 'HUSBAND',
+    name: 'Commercial Bank Card •••• 0484 (Tharindu)',
+    accountType: 'DEBIT_CARD',
+    bankName: 'Commercial Bank',
+    openingBalanceDate: '2026-11-01',
+    cardLastFour: '0484',
+    linkedParentAccountId: SEED_IDS.accounts.husbandCommercialBank,
+    openingBalance: '0.00',
+    creditLimit: null,
+    notes: 'Tharindu Commercial Bank Card #2 ending in 0484 (linked to Commercial Bank Account - Tharindu)',
+  },
+  {
+    id: SEED_IDS.accounts.wifeHnbCreditCard9005,
+    ownerUserId: SEED_IDS.wife,
+    ownershipType: 'WIFE',
+    name: 'Wife - HNB Credit Card •••• 9005',
+    accountType: 'CREDIT_CARD',
+    bankName: 'Hatton National Bank',
+    openingBalanceDate: '2026-11-01',
+    cardLastFour: '9005',
+    linkedParentAccountId: null,
+    openingBalance: '12500.00',
+    creditLimit: '30000.00',
+    notes: 'Wife HNB Credit Card ending in 9005 (Credit Limit: LKR 30,000)',
+  },
+  {
+    id: SEED_IDS.accounts.wifeNsbCard,
+    ownerUserId: SEED_IDS.wife,
+    ownershipType: 'WIFE',
+    name: 'Wife - NSB Card (End No: Add Later)',
+    accountType: 'DEBIT_CARD',
+    bankName: 'National Savings Bank',
+    openingBalanceDate: '2026-11-01',
+    cardLastFour: 'ADD_LATER',
+    linkedParentAccountId: SEED_IDS.accounts.wifeNsbBank,
+    openingBalance: '0.00',
+    creditLimit: null,
+    notes: 'Linked to NSB Bank Account - Wife (Click Edit Card to add ending 4 digits later)',
+  },
+  {
+    id: SEED_IDS.accounts.wifeBocCard,
+    ownerUserId: SEED_IDS.wife,
+    ownershipType: 'WIFE',
+    name: 'Wife - BOC Card (End No: Add Later)',
+    accountType: 'DEBIT_CARD',
+    bankName: 'Bank of Ceylon',
+    openingBalanceDate: '2026-11-01',
+    cardLastFour: 'ADD_LATER',
+    linkedParentAccountId: SEED_IDS.accounts.wifeBocBank,
+    openingBalance: '0.00',
+    creditLimit: null,
+    notes: 'Linked to BOC Bank Account - Wife (Click Edit Card to add ending 4 digits later)',
+  },
+];
+
+export async function ensureAccountsAndCategoriesMigrated(executor?: { query: typeof query }): Promise<void> {
+  const db = executor || { query };
+
+  try {
+    await db.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS card_last_four VARCHAR(15);`);
+    await db.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS bank_name VARCHAR(120);`);
+    await db.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS opening_balance_date DATE DEFAULT '2026-11-01';`);
+    await db.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS funding_source VARCHAR(40) NOT NULL DEFAULT 'REGULAR_INCOME';`);
+    await db.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS transfer_fee_lkr NUMERIC(15, 2) NOT NULL DEFAULT 0.00;`);
+    await db.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS transfer_fee_category_id UUID REFERENCES categories(id) ON DELETE SET NULL;`);
+    await db.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS parent_transaction_id UUID REFERENCES transactions(id) ON DELETE CASCADE;`);
+  } catch (err) {
+    console.warn('Idempotent column migration notice:', err);
+  }
+
+  const hhCheck = await db.query('SELECT id FROM households WHERE id = $1', [SEED_IDS.household]);
+  if (hhCheck.rows.length === 0) {
+    return;
+  }
+
+  for (const a of INITIAL_ACCOUNTS) {
+    try {
+      const existing = await db.query<{ id: string; bank_name: string | null; opening_balance_date: string | null }>(
+        'SELECT id, bank_name, opening_balance_date FROM accounts WHERE id = $1',
+        [a.id]
+      );
+      if (existing.rows.length === 0) {
+        await db.query(
+          `INSERT INTO accounts (
+            id, household_id, owner_user_id, ownership_type, name, account_type, bank_name, opening_balance_date, card_last_four,
+            linked_parent_account_id, currency, opening_balance, current_balance, credit_limit, status, notes
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'LKR', $11, $11, $12, 'ACTIVE', $13)`,
+          [
+            a.id,
+            SEED_IDS.household,
+            a.ownerUserId,
+            a.ownershipType,
+            a.name,
+            a.accountType,
+            a.bankName,
+            a.openingBalanceDate,
+            a.cardLastFour,
+            a.linkedParentAccountId,
+            a.openingBalance,
+            a.creditLimit,
+            a.notes,
+          ]
+        );
+      } else {
+        const row = existing.rows[0];
+        if (!row.bank_name || !row.opening_balance_date) {
+          await db.query(
+            `UPDATE accounts 
+             SET bank_name = COALESCE(bank_name, $2),
+                 opening_balance_date = COALESCE(opening_balance_date, $3),
+                 linked_parent_account_id = COALESCE(linked_parent_account_id, $4)
+             WHERE id = $1`,
+            [a.id, a.bankName, a.openingBalanceDate, a.linkedParentAccountId]
+          );
+        }
+      }
+    } catch (err) {
+      console.warn(`Notice updating account ${a.name}:`, err);
+    }
+  }
+
+  try {
+    const existingFeeCat = await db.query(
+      `SELECT id FROM categories WHERE household_id = $1 AND name = 'Bank Charges and Fees'`,
+      [SEED_IDS.household]
+    );
+    if (existingFeeCat.rows.length === 0) {
+      const catId = crypto.randomUUID();
+      await db.query(
+        `INSERT INTO categories (
+          id, household_id, parent_id, name, type, default_essentiality, is_fixed_default, icon, color, is_system_seeded, sort_order
+        ) VALUES ($1, $2, NULL, 'Bank Charges and Fees', 'EXPENSE', TRUE, FALSE, 'Receipt', '#64748b', TRUE, 95)`,
+        [catId, SEED_IDS.household]
+      );
+    }
+  } catch (err) {
+    console.warn('Notice ensuring fee category:', err);
+  }
+}
+
 export async function ensureSeeded(): Promise<void> {
   // Check if already seeded with Tharindu & Sudu's profile
   const existingUsers = await query<{ display_name: string }>(
@@ -267,6 +555,7 @@ export async function ensureSeeded(): Promise<void> {
   );
 
   if (existingUsers.rows[0]?.display_name?.includes('Tharindu')) {
+    await ensureAccountsAndCategoriesMigrated();
     return;
   }
 
@@ -347,193 +636,7 @@ export async function ensureSeeded(): Promise<void> {
     }
 
     // 4. Seed the Exact Bank Accounts (5) + Cash Wallets (3) + Cards (5)
-    const accs = [
-      // BANK ACCOUNTS
-      {
-        id: SEED_IDS.accounts.husbandCommercialBank,
-        ownerUserId: SEED_IDS.husband,
-        ownershipType: 'HUSBAND',
-        name: 'Commercial Bank Account - Tharindu',
-        accountType: 'BANK_CURRENT',
-        bankName: 'Commercial Bank',
-        openingBalanceDate: '2026-11-01',
-        cardLastFour: null,
-        linkedParentAccountId: null,
-        openingBalance: '185000.00',
-        creditLimit: null,
-        notes: 'Tharindu primary Commercial Bank salary account (Salary arrives 10th-12th, sometimes in partial tranches)',
-      },
-      {
-        id: SEED_IDS.accounts.wifeCommercialBank,
-        ownerUserId: SEED_IDS.wife,
-        ownershipType: 'WIFE',
-        name: 'Commercial Bank Account - Wife (Sudu)',
-        accountType: 'BANK_SAVINGS',
-        bankName: 'Commercial Bank',
-        openingBalanceDate: '2026-11-01',
-        cardLastFour: null,
-        linkedParentAccountId: null,
-        openingBalance: '65000.00',
-        creditLimit: null,
-        notes: 'Wife Commercial Bank account',
-      },
-      {
-        id: SEED_IDS.accounts.wifeNsbBank,
-        ownerUserId: SEED_IDS.wife,
-        ownershipType: 'WIFE',
-        name: 'NSB Bank Account - Wife (Sudu)',
-        accountType: 'BANK_SAVINGS',
-        bankName: 'National Savings Bank',
-        openingBalanceDate: '2026-11-01',
-        cardLastFour: null,
-        linkedParentAccountId: null,
-        openingBalance: '140000.00',
-        creditLimit: null,
-        notes: 'Wife NSB account (Salary + ~100k OT arrives 24th-26th with no delay)',
-      },
-      {
-        id: SEED_IDS.accounts.husbandNsbBank,
-        ownerUserId: SEED_IDS.husband,
-        ownershipType: 'HUSBAND',
-        name: 'NSB Bank Account - Tharindu (ME)',
-        accountType: 'BANK_SAVINGS',
-        bankName: 'National Savings Bank',
-        openingBalanceDate: '2026-11-01',
-        cardLastFour: null,
-        linkedParentAccountId: null,
-        openingBalance: '450000.00',
-        creditLimit: null,
-        notes: 'Tharindu NSB savings reserve account (Ituru karapu salli)',
-      },
-      {
-        id: SEED_IDS.accounts.wifeBocBank,
-        ownerUserId: SEED_IDS.wife,
-        ownershipType: 'WIFE',
-        name: 'BOC Bank Account - Wife (Sudu)',
-        accountType: 'BANK_SAVINGS',
-        bankName: 'Bank of Ceylon',
-        openingBalanceDate: '2026-11-01',
-        cardLastFour: null,
-        linkedParentAccountId: null,
-        openingBalance: '55000.00',
-        creditLimit: null,
-        notes: 'Wife Bank of Ceylon (BOC) account (linked to Sudu 10 Lakhs BOC Loan)',
-      },
-      {
-        id: SEED_IDS.accounts.husbandCash,
-        ownerUserId: SEED_IDS.husband,
-        ownershipType: 'HUSBAND',
-        name: "Husband's Cash Wallet (Tharindu)",
-        accountType: 'CASH',
-        bankName: 'Physical Cash',
-        openingBalanceDate: '2026-11-01',
-        cardLastFour: null,
-        linkedParentAccountId: null,
-        openingBalance: '15000.00',
-        creditLimit: null,
-        notes: 'Tharindu personal physical cash wallet',
-      },
-      {
-        id: SEED_IDS.accounts.wifeCash,
-        ownerUserId: SEED_IDS.wife,
-        ownershipType: 'WIFE',
-        name: "Wife's Cash Wallet (Sudu)",
-        accountType: 'CASH',
-        bankName: 'Physical Cash',
-        openingBalanceDate: '2026-11-01',
-        cardLastFour: null,
-        linkedParentAccountId: null,
-        openingBalance: '10000.00',
-        creditLimit: null,
-        notes: 'Sudu personal physical cash wallet',
-      },
-      {
-        id: SEED_IDS.accounts.householdCash,
-        ownerUserId: null,
-        ownershipType: 'JOINT',
-        name: 'Household Cash Wallet',
-        accountType: 'CASH',
-        bankName: 'Physical Cash',
-        openingBalanceDate: '2026-11-01',
-        cardLastFour: null,
-        linkedParentAccountId: null,
-        openingBalance: '25000.00',
-        creditLimit: null,
-        notes: 'Shared household cash wallet',
-      },
-
-      // CARDS (5 Cards)
-      {
-        id: SEED_IDS.accounts.husbandComCard1143,
-        ownerUserId: SEED_IDS.husband,
-        ownershipType: 'HUSBAND',
-        name: 'Commercial Bank Card •••• 1143 (Tharindu)',
-        accountType: 'DEBIT_CARD',
-        bankName: 'Commercial Bank',
-        openingBalanceDate: '2026-11-01',
-        cardLastFour: '1143',
-        linkedParentAccountId: SEED_IDS.accounts.husbandCommercialBank,
-        openingBalance: '0.00',
-        creditLimit: null,
-        notes: 'Tharindu Commercial Bank Card #1 ending in 1143 (linked to Commercial Bank Account - Tharindu)',
-      },
-      {
-        id: SEED_IDS.accounts.husbandComCard0484,
-        ownerUserId: SEED_IDS.husband,
-        ownershipType: 'HUSBAND',
-        name: 'Commercial Bank Card •••• 0484 (Tharindu)',
-        accountType: 'DEBIT_CARD',
-        bankName: 'Commercial Bank',
-        openingBalanceDate: '2026-11-01',
-        cardLastFour: '0484',
-        linkedParentAccountId: SEED_IDS.accounts.husbandCommercialBank,
-        openingBalance: '0.00',
-        creditLimit: null,
-        notes: 'Tharindu Commercial Bank Card #2 ending in 0484 (linked to Commercial Bank Account - Tharindu)',
-      },
-      {
-        id: SEED_IDS.accounts.wifeHnbCreditCard9005,
-        ownerUserId: SEED_IDS.wife,
-        ownershipType: 'WIFE',
-        name: 'Wife - HNB Credit Card •••• 9005',
-        accountType: 'CREDIT_CARD',
-        bankName: 'Hatton National Bank',
-        openingBalanceDate: '2026-11-01',
-        cardLastFour: '9005',
-        linkedParentAccountId: null,
-        openingBalance: '12500.00',
-        creditLimit: '30000.00',
-        notes: 'Wife HNB Credit Card ending in 9005 (Credit Limit: LKR 30,000)',
-      },
-      {
-        id: SEED_IDS.accounts.wifeNsbCard,
-        ownerUserId: SEED_IDS.wife,
-        ownershipType: 'WIFE',
-        name: 'Wife - NSB Card (End No: Add Later)',
-        accountType: 'DEBIT_CARD',
-        bankName: 'National Savings Bank',
-        openingBalanceDate: '2026-11-01',
-        cardLastFour: 'ADD_LATER',
-        linkedParentAccountId: SEED_IDS.accounts.wifeNsbBank,
-        openingBalance: '0.00',
-        creditLimit: null,
-        notes: 'Linked to NSB Bank Account - Wife (Click Edit Card to add ending 4 digits later)',
-      },
-      {
-        id: SEED_IDS.accounts.wifeBocCard,
-        ownerUserId: SEED_IDS.wife,
-        ownershipType: 'WIFE',
-        name: 'Wife - BOC Card (End No: Add Later)',
-        accountType: 'DEBIT_CARD',
-        bankName: 'Bank of Ceylon',
-        openingBalanceDate: '2026-11-01',
-        cardLastFour: 'ADD_LATER',
-        linkedParentAccountId: SEED_IDS.accounts.wifeBocBank,
-        openingBalance: '0.00',
-        creditLimit: null,
-        notes: 'Linked to BOC Bank Account - Wife (Click Edit Card to add ending 4 digits later)',
-      },
-    ];
+    const accs = INITIAL_ACCOUNTS;
 
     const accountBalances = new Map<string, { balance: string; type: any; parentId: string | null }>();
 

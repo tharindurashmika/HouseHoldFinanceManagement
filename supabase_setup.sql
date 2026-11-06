@@ -337,3 +337,34 @@ ALTER TABLE transactions ADD COLUMN IF NOT EXISTS transfer_fee_lkr NUMERIC(15, 2
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS transfer_fee_category_id UUID REFERENCES categories(id) ON DELETE SET NULL;
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS parent_transaction_id UUID REFERENCES transactions(id) ON DELETE CASCADE;
 
+-- ============================================================================
+-- 3. ENSURE INDIVIDUAL CASH WALLETS, CARD MAPPINGS & OPENING BALANCES (IDEMPOTENT)
+-- ============================================================================
+-- 3.1 Insert Husband Cash Wallet if not exists
+INSERT INTO accounts (id, household_id, owner_user_id, ownership_type, name, account_type, bank_name, currency, opening_balance, opening_balance_date, current_balance, notes)
+VALUES ('33333333-3333-4333-8333-333333333312', '11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222221', 'HUSBAND', 'Husband''s Cash Wallet (Tharindu)', 'CASH', 'Physical Cash', 'LKR', 15000.00, '2026-11-01', 15000.00, 'Tharindu personal physical cash wallet')
+ON CONFLICT (id) DO UPDATE SET bank_name = 'Physical Cash';
+
+-- 3.2 Insert Wife Cash Wallet if not exists
+INSERT INTO accounts (id, household_id, owner_user_id, ownership_type, name, account_type, bank_name, currency, opening_balance, opening_balance_date, current_balance, notes)
+VALUES ('33333333-3333-4333-8333-333333333313', '11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222', 'WIFE', 'Wife''s Cash Wallet (Sudu)', 'CASH', 'Physical Cash', 'LKR', 10000.00, '2026-11-01', 10000.00, 'Sudu personal physical cash wallet')
+ON CONFLICT (id) DO UPDATE SET bank_name = 'Physical Cash';
+
+-- 3.3 Update bank names and linked cards for all existing accounts
+UPDATE accounts SET bank_name = 'Commercial Bank', opening_balance_date = '2026-11-01' WHERE id = '33333333-3333-4333-8333-333333333301';
+UPDATE accounts SET bank_name = 'Commercial Bank', opening_balance_date = '2026-11-01' WHERE id = '33333333-3333-4333-8333-333333333307';
+UPDATE accounts SET bank_name = 'National Savings Bank', opening_balance_date = '2026-11-01' WHERE id = '33333333-3333-4333-8333-333333333302';
+UPDATE accounts SET bank_name = 'National Savings Bank', opening_balance_date = '2026-11-01' WHERE id = '33333333-3333-4333-8333-333333333303';
+UPDATE accounts SET bank_name = 'Bank of Ceylon', opening_balance_date = '2026-11-01' WHERE id = '33333333-3333-4333-8333-333333333308';
+UPDATE accounts SET bank_name = 'Physical Cash', opening_balance_date = '2026-11-01' WHERE id = '33333333-3333-4333-8333-333333333304';
+UPDATE accounts SET bank_name = 'Commercial Bank', linked_parent_account_id = '33333333-3333-4333-8333-333333333301' WHERE id = '33333333-3333-4333-8333-333333333306';
+UPDATE accounts SET bank_name = 'Commercial Bank', linked_parent_account_id = '33333333-3333-4333-8333-333333333301' WHERE id = '33333333-3333-4333-8333-333333333309';
+UPDATE accounts SET bank_name = 'Hatton National Bank' WHERE id = '33333333-3333-4333-8333-333333333305';
+UPDATE accounts SET bank_name = 'National Savings Bank', linked_parent_account_id = '33333333-3333-4333-8333-333333333302' WHERE id = '33333333-3333-4333-8333-333333333310';
+UPDATE accounts SET bank_name = 'Bank of Ceylon', linked_parent_account_id = '33333333-3333-4333-8333-333333333308' WHERE id = '33333333-3333-4333-8333-333333333311';
+
+-- 3.4 Insert Bank Charges and Fees category if missing
+INSERT INTO categories (id, household_id, name, type, default_essentiality, is_fixed_default, icon, color, is_system_seeded, sort_order)
+SELECT gen_random_uuid(), '11111111-1111-4111-8111-111111111111', 'Bank Charges and Fees', 'EXPENSE', TRUE, FALSE, 'Receipt', '#64748b', TRUE, 95
+WHERE NOT EXISTS (SELECT 1 FROM categories WHERE household_id = '11111111-1111-4111-8111-111111111111' AND name = 'Bank Charges and Fees');
+

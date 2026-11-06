@@ -117,11 +117,14 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       setOriginalAmount('');
       setExchangeRate('1');
       setActualLkrAmount('');
-      setPaymentMethod(initialType === 'INCOME' ? 'BANK_TRANSFER' : 'DEBIT_CARD');
-      setSourceAccountId(accounts[0]?.id || '');
-      setDestinationAccountId(accounts[1]?.id || '');
-      setPaidOrReceivedByUserId(activeUserId || members[0]?.id || '');
-      setHouseholdMemberScope(initialType === 'INCOME' ? 'HUSBAND' : 'SHARED');
+
+      const defaultUserId = activeUserId || members[0]?.id || '';
+      setPaidOrReceivedByUserId(defaultUserId);
+      const member = members.find((m) => m.id === defaultUserId);
+      const isWife = member?.memberRole === 'WIFE';
+      const targetOwnership = isWife ? 'WIFE' : 'HUSBAND';
+
+      setHouseholdMemberScope(initialType === 'INCOME' ? targetOwnership : 'SHARED');
       setFundingSource('REGULAR_INCOME');
       setIsEssential(defCat?.defaultEssentiality ?? true);
       setIsFixed(defCat?.isFixedDefault ?? false);
@@ -131,6 +134,74 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       setTransferFeeLkr('');
       setTransferFeeCategoryId('');
       setItems([]);
+
+      // Auto-select initial account and payment method based on member & transactionType
+      let initialAcc: Account | undefined;
+      if (initialType === 'INCOME') {
+        initialAcc =
+          accounts.find(
+            (a) =>
+              a.ownershipType === targetOwnership &&
+              (a.accountType === 'BANK_CURRENT' || a.accountType === 'BANK_SAVINGS') &&
+              !a.linkedParentAccountId
+          ) ||
+          accounts.find(
+            (a) =>
+              (a.accountType === 'BANK_CURRENT' || a.accountType === 'BANK_SAVINGS') &&
+              !a.linkedParentAccountId
+          ) ||
+          accounts[0];
+      } else if (initialType === 'TRANSFER') {
+        initialAcc =
+          accounts.find(
+            (a) =>
+              a.ownershipType === targetOwnership &&
+              (a.accountType === 'BANK_CURRENT' || a.accountType === 'BANK_SAVINGS') &&
+              !a.linkedParentAccountId
+          ) ||
+          accounts.find(
+            (a) =>
+              (a.accountType === 'BANK_CURRENT' || a.accountType === 'BANK_SAVINGS') &&
+              !a.linkedParentAccountId
+          ) ||
+          accounts[0];
+      } else {
+        // EXPENSE: Default to member's Debit Card, or member's Bank, or member's Cash
+        initialAcc =
+          accounts.find((a) => a.ownershipType === targetOwnership && a.accountType === 'DEBIT_CARD') ||
+          accounts.find(
+            (a) =>
+              a.ownershipType === targetOwnership &&
+              (a.accountType === 'BANK_CURRENT' || a.accountType === 'BANK_SAVINGS') &&
+              !a.linkedParentAccountId
+          ) ||
+          accounts.find((a) => a.ownershipType === targetOwnership && a.accountType === 'CASH') ||
+          accounts.find((a) => a.ownershipType === targetOwnership) ||
+          accounts[0];
+      }
+
+      if (initialAcc) {
+        setSourceAccountId(initialAcc.id);
+        if (initialAcc.accountType === 'CASH') {
+          setPaymentMethod('CASH');
+        } else if (initialAcc.accountType === 'DEBIT_CARD') {
+          setPaymentMethod('DEBIT_CARD');
+        } else if (initialAcc.accountType === 'CREDIT_CARD') {
+          setPaymentMethod('CREDIT_CARD');
+        } else if (initialAcc.accountType === 'BANK_CURRENT' || initialAcc.accountType === 'BANK_SAVINGS') {
+          setPaymentMethod('BANK_TRANSFER');
+        } else if (initialAcc.accountType === 'DIGITAL_WALLET') {
+          setPaymentMethod('DIGITAL_WALLET');
+        } else {
+          setPaymentMethod('OTHER');
+        }
+      } else {
+        setSourceAccountId('');
+        setPaymentMethod(initialType === 'INCOME' ? 'BANK_TRANSFER' : 'DEBIT_CARD');
+      }
+
+      const otherAcc = accounts.find((a) => a.id !== initialAcc?.id);
+      setDestinationAccountId(otherAcc?.id || '');
     }
   }, [isOpen, editingTransaction, initialType, categories, accounts, activeUserId, members]);
 
@@ -302,11 +373,26 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
     // If currently selected account belongs to the opposite member, switch to this member's corresponding account
     const currentAcc = accounts.find((a) => a.id === sourceAccountId);
     if (currentAcc && currentAcc.ownershipType !== 'JOINT' && currentAcc.ownershipType !== targetOwnership) {
-      const matchingSameType = accounts.find(
-        (a) => a.accountType === currentAcc.accountType && a.ownershipType === targetOwnership
-      );
-      if (matchingSameType) {
-        setSourceAccountId(matchingSameType.id);
+      const isBank = currentAcc.accountType === 'BANK_CURRENT' || currentAcc.accountType === 'BANK_SAVINGS';
+      let matchingAcc: Account | undefined;
+
+      if (currentAcc.accountType === 'CASH') {
+        matchingAcc = accounts.find((a) => a.accountType === 'CASH' && a.ownershipType === targetOwnership);
+      } else if (currentAcc.accountType === 'DEBIT_CARD') {
+        matchingAcc = accounts.find((a) => a.accountType === 'DEBIT_CARD' && a.ownershipType === targetOwnership);
+      } else if (currentAcc.accountType === 'CREDIT_CARD') {
+        matchingAcc = accounts.find((a) => a.accountType === 'CREDIT_CARD' && a.ownershipType === targetOwnership);
+      } else if (isBank) {
+        matchingAcc = accounts.find(
+          (a) =>
+            (a.accountType === 'BANK_CURRENT' || a.accountType === 'BANK_SAVINGS') &&
+            !a.linkedParentAccountId &&
+            a.ownershipType === targetOwnership
+        );
+      }
+
+      if (matchingAcc) {
+        setSourceAccountId(matchingAcc.id);
       } else {
         const anyMemberAcc = accounts.find((a) => a.ownershipType === targetOwnership);
         if (anyMemberAcc) {
@@ -336,11 +422,22 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       <>
         {cashWallets.length > 0 && (
           <optgroup label="💵 Physical Cash Wallets (Husband & Wife)">
-            {cashWallets.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name} ({a.ownershipType === 'HUSBAND' ? 'Tharindu' : a.ownershipType === 'WIFE' ? 'Sudu' : 'Joint'}) • Available: {formatLKR(a.currentBalance)}
-              </option>
-            ))}
+            {cashWallets.map((a) => {
+              const ownerTag =
+                a.ownershipType === 'HUSBAND'
+                  ? 'Tharindu'
+                  : a.ownershipType === 'WIFE'
+                    ? 'Sudu'
+                    : 'Joint';
+              const nameText = a.name.toLowerCase().includes(ownerTag.toLowerCase())
+                ? a.name
+                : `${a.name} (${ownerTag})`;
+              return (
+                <option key={a.id} value={a.id}>
+                  {nameText} • Available: {formatLKR(a.currentBalance)}
+                </option>
+              );
+            })}
           </optgroup>
         )}
 

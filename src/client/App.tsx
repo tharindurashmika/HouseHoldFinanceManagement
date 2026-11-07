@@ -48,8 +48,70 @@ const NAV_ITEMS = [
   { id: 'settings', label: 'Settings', icon: Settings },
 ] as const;
 
+const VALID_TABS = [
+  'dashboard',
+  'transactions',
+  'income',
+  'expenses',
+  'budgets',
+  'loans',
+  'subscriptions',
+  'savings',
+  'reports',
+  'settings',
+] as const;
+
+type NavTabId = (typeof VALID_TABS)[number];
+
+function getTabFromHash(): NavTabId {
+  if (typeof window === 'undefined') return 'dashboard';
+  const rawHash = window.location.hash.replace(/^#\/?/, '').toLowerCase().trim();
+  const cleanTab = rawHash.split('?')[0].split('/')[0];
+  if (VALID_TABS.includes(cleanTab as NavTabId)) {
+    return cleanTab as NavTabId;
+  }
+  return 'dashboard';
+}
+
+function setHashForTab(tab: string) {
+  if (typeof window === 'undefined') return;
+  const targetHash = `#/${tab}`;
+  if (window.location.hash !== targetHash) {
+    if (!window.location.hash || window.location.hash === '#') {
+      window.history.replaceState(null, '', targetHash);
+    } else {
+      window.location.hash = targetHash;
+    }
+  }
+}
+
 export const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<string>('dashboard');
+  const [activeTab, setActiveTabState] = useState<string>(() => getTabFromHash());
+
+  const setActiveTab = useCallback((tab: string) => {
+    setActiveTabState(tab);
+    setHashForTab(tab);
+  }, []);
+
+  useEffect(() => {
+    if (!window.location.hash || window.location.hash === '#') {
+      setHashForTab('dashboard');
+    }
+
+    const handleHashChange = () => {
+      const tab = getTabFromHash();
+      setActiveTabState(tab);
+    };
+
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
+
+  useEffect(() => {
+    const currentNav = NAV_ITEMS.find((n) => n.id === activeTab);
+    const label = currentNav?.label || 'Dashboard';
+    document.title = `${label} — Tharindu & Sudu Household Finance`;
+  }, [activeTab]);
   const [darkMode, setDarkMode] = useState<boolean>(() => {
     return localStorage.getItem('hf_theme') === 'dark';
   });
@@ -201,9 +263,13 @@ export const App: React.FC = () => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
             return (
-              <button
+              <a
                 key={item.id}
-                onClick={() => setActiveTab(item.id)}
+                href={`#/${item.id}`}
+                onClick={(e) => {
+                  e.preventDefault();
+                  setActiveTab(item.id);
+                }}
                 className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition ${
                   isActive
                     ? 'bg-blue-50 text-blue-600 dark:bg-blue-950/60 dark:text-blue-400'
@@ -212,7 +278,7 @@ export const App: React.FC = () => {
               >
                 <Icon className="w-4 h-4 shrink-0" />
                 <span>{item.label}</span>
-              </button>
+              </a>
             );
           })}
         </nav>
@@ -327,9 +393,11 @@ export const App: React.FC = () => {
               {NAV_ITEMS.map((item) => {
                 const Icon = item.icon;
                 return (
-                  <button
+                  <a
                     key={item.id}
-                    onClick={() => {
+                    href={`#/${item.id}`}
+                    onClick={(e) => {
+                      e.preventDefault();
                       setActiveTab(item.id);
                       setMobileMenuOpen(false);
                     }}
@@ -341,7 +409,7 @@ export const App: React.FC = () => {
                   >
                     <Icon className="w-4 h-4 shrink-0" />
                     <span className="truncate">{item.label}</span>
-                  </button>
+                  </a>
                 );
               })}
             </div>
@@ -455,8 +523,10 @@ export const App: React.FC = () => {
 
         {/* Native iPhone / Mobile Bottom Navigation Bar */}
         <nav className="no-print lg:hidden fixed bottom-0 inset-x-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-lg border-t border-slate-200 dark:border-slate-800 px-2 pt-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom))] flex items-center justify-around">
-          <button
-            onClick={() => {
+          <a
+            href="#/dashboard"
+            onClick={(e) => {
+              e.preventDefault();
               setActiveTab('dashboard');
               setMobileMenuOpen(false);
             }}
@@ -468,10 +538,12 @@ export const App: React.FC = () => {
           >
             <LayoutDashboard className="w-5 h-5" />
             <span>Home</span>
-          </button>
+          </a>
 
-          <button
-            onClick={() => {
+          <a
+            href="#/income"
+            onClick={(e) => {
+              e.preventDefault();
               setActiveTab('income');
               setMobileMenuOpen(false);
             }}
@@ -483,7 +555,7 @@ export const App: React.FC = () => {
           >
             <TrendingUp className="w-5 h-5" />
             <span>Income</span>
-          </button>
+          </a>
 
           {/* Center Floating + Add Transaction Button */}
           <button
@@ -494,8 +566,10 @@ export const App: React.FC = () => {
             <Plus className="w-6 h-6" />
           </button>
 
-          <button
-            onClick={() => {
+          <a
+            href="#/loans"
+            onClick={(e) => {
+              e.preventDefault();
               setActiveTab('loans');
               setMobileMenuOpen(false);
             }}
@@ -507,7 +581,7 @@ export const App: React.FC = () => {
           >
             <Landmark className="w-5 h-5" />
             <span>Loans/Cards</span>
-          </button>
+          </a>
 
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}

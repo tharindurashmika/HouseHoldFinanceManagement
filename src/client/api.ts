@@ -168,6 +168,16 @@ async function runAction<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
+let cachedDashboard: {
+  key: string;
+  data: DashboardSummary;
+  expiresAt: number;
+} | null = null;
+
+export function invalidateDashboardCache(): void {
+  cachedDashboard = null;
+}
+
 export const api = {
   getContext: (): Promise<HouseholdContextResponse> =>
     runAction(async () => {
@@ -240,6 +250,7 @@ export const api = {
 
   switchMember: (userId: string) =>
     runAction(async () => {
+      invalidateDashboardCache();
       setActiveUserIdHeader(userId);
       const user = await resolveActiveUser();
       return { token: 'pwa-session', user };
@@ -248,7 +259,18 @@ export const api = {
   getDashboard: (startDate: string, endDate: string): Promise<DashboardSummary> =>
     runAction(async () => {
       const user = await resolveActiveUser();
-      return getDashboardSummary(user.householdId, startDate, endDate);
+      const cacheKey = `${user.householdId}_${startDate}_${endDate}`;
+      const now = Date.now();
+      if (cachedDashboard && cachedDashboard.key === cacheKey && cachedDashboard.expiresAt > now) {
+        return cachedDashboard.data;
+      }
+      const data = await getDashboardSummary(user.householdId, startDate, endDate);
+      cachedDashboard = {
+        key: cacheKey,
+        data,
+        expiresAt: now + 45000,
+      };
+      return data;
     }),
 
   getTransactions: (params: Record<string, string | undefined> = {}): Promise<{ transactions: Transaction[] }> =>
@@ -271,6 +293,7 @@ export const api = {
 
   createTransaction: (payload: any): Promise<{ transaction: Transaction }> =>
     runAction(async () => {
+      invalidateDashboardCache();
       const user = await resolveActiveUser();
       const parsed = transactionSchema.parse(payload);
       const transaction = await createTransaction(user.householdId, {
@@ -282,6 +305,7 @@ export const api = {
 
   updateTransaction: (id: string, payload: any): Promise<{ transaction: Transaction }> =>
     runAction(async () => {
+      invalidateDashboardCache();
       const user = await resolveActiveUser();
       const parsed = transactionSchema.parse(payload);
       const transaction = await updateTransaction(user.householdId, id, {
@@ -293,6 +317,7 @@ export const api = {
 
   deleteTransaction: (id: string): Promise<{ deleted: boolean }> =>
     runAction(async () => {
+      invalidateDashboardCache();
       const user = await resolveActiveUser();
       await deleteTransaction(user.householdId, id);
       return { deleted: true };
@@ -348,6 +373,7 @@ export const api = {
 
   createAccount: (payload: any): Promise<{ account: Account }> =>
     runAction(async () => {
+      invalidateDashboardCache();
       const user = await resolveActiveUser();
       const parsed = accountSchema.parse(payload);
       const account = await createAccount(user.householdId, parsed);
@@ -356,6 +382,7 @@ export const api = {
 
   updateAccount: (id: string, payload: any): Promise<{ account: Account }> =>
     runAction(async () => {
+      invalidateDashboardCache();
       const user = await resolveActiveUser();
       const account = await updateAccount(user.householdId, id, payload);
       return { account };
@@ -366,6 +393,7 @@ export const api = {
     payload: any
   ): Promise<{ account: Account; reconciliation: AccountReconciliation }> =>
     runAction(async () => {
+      invalidateDashboardCache();
       const user = await resolveActiveUser();
       const parsed = reconcileAccountSchema.parse({
         ...payload,

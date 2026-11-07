@@ -16,7 +16,8 @@ function getMonthDateRange(year: number, month: number): { startDate: string; en
 export async function getMonthlyBudgetsWithActuals(
   householdId: string,
   year: number,
-  month: number
+  month: number,
+  preloaded?: { currTxs?: any[]; prevTxs?: any[] }
 ) {
   const res = await query(
     `SELECT b.*,
@@ -46,23 +47,34 @@ export async function getMonthlyBudgetsWithActuals(
     alertThresholdPct: Number(r.alert_threshold_pct),
   }));
 
-  const currRange = getMonthDateRange(year, month);
-  const prevYear = month === 1 ? year - 1 : year;
-  const prevMonth = month === 1 ? 12 : month - 1;
-  const prevRange = getMonthDateRange(prevYear, prevMonth);
+  let currTxs = preloaded?.currTxs;
+  let prevTxs = preloaded?.prevTxs;
 
-  const [currTxs, prevTxs] = await Promise.all([
-    listTransactions(householdId, {
-      startDate: currRange.startDate,
-      endDate: currRange.endDate,
-      transactionType: 'EXPENSE',
-    }),
-    listTransactions(householdId, {
-      startDate: prevRange.startDate,
-      endDate: prevRange.endDate,
-      transactionType: 'EXPENSE',
-    }),
-  ]);
+  if (!currTxs || !prevTxs) {
+    const currRange = getMonthDateRange(year, month);
+    const prevYear = month === 1 ? year - 1 : year;
+    const prevMonth = month === 1 ? 12 : month - 1;
+    const prevRange = getMonthDateRange(prevYear, prevMonth);
+
+    const [c, p] = await Promise.all([
+      currTxs
+        ? Promise.resolve(currTxs)
+        : listTransactions(householdId, {
+            startDate: currRange.startDate,
+            endDate: currRange.endDate,
+            transactionType: 'EXPENSE',
+          }),
+      prevTxs
+        ? Promise.resolve(prevTxs)
+        : listTransactions(householdId, {
+            startDate: prevRange.startDate,
+            endDate: prevRange.endDate,
+            transactionType: 'EXPENSE',
+          }),
+    ]);
+    currTxs = c;
+    prevTxs = p;
+  }
 
   return evaluateMonthlyBudgets(budgets, currTxs, prevTxs);
 }

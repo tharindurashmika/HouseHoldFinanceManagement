@@ -272,17 +272,61 @@ export async function recalculateAccountBalance(
  * Generates detailed balance breakdowns for all or a specific account:
  * Opening balance, Income, Expenses, Bank Charges, Withdrawals (Bank->Cash), Deposits (Cash->Bank),
  * Transfers In/Out, and Current Calculated Balance.
+ *
+ * Vectorized high-performance implementation:
+ * Uses a single query for all transactions instead of 180+ individual SQL requests.
  */
 export async function getAccountBalanceBreakdowns(
   householdId: string,
-  filter?: { accountId?: string; memberUserId?: string; startDate?: string; endDate?: string }
+  filter?: { accountId?: string; memberUserId?: string; startDate?: string; endDate?: string },
+  preloaded?: { accounts?: Account[]; transactions?: any[] }
 ): Promise<AccountBalanceBreakdown[]> {
-  const accounts = await listAccounts(householdId);
+  const accounts = preloaded?.accounts || (await listAccounts(householdId));
   const filteredAccounts = accounts.filter((a) => {
     if (filter?.accountId && a.id !== filter.accountId) return false;
     if (filter?.memberUserId && a.ownerUserId && a.ownerUserId !== filter.memberUserId) return false;
     return true;
   });
+
+  // Fetch all transactions once for all accounts in this household
+  const txRows: any[] =
+    preloaded?.transactions ||
+    (
+      await query(
+        `SELECT t.id, t.transaction_date, t.transaction_type, t.actual_lkr_amount,
+                t.source_account_id, t.destination_account_id, t.description,
+                c.name AS category_name,
+                src.account_type AS source_account_type,
+                dst.account_type AS destination_account_type
+         FROM transactions t
+         LEFT JOIN categories c ON t.category_id = c.id
+         LEFT JOIN accounts src ON t.source_account_id = src.id
+         LEFT JOIN accounts dst ON t.destination_account_id = dst.id
+         WHERE t.household_id = $1`,
+        [householdId]
+      )
+    ).rows;
+
+  const inDateRange = (dateStr: string) => {
+    if (filter?.startDate && filter?.endDate) {
+      return dateStr >= filter.startDate && dateStr <= filter.endDate;
+    }
+    if (filter?.startDate) return dateStr >= filter.startDate;
+    if (filter?.endDate) return dateStr <= filter.endDate;
+    return true;
+  };
+
+  const isBankFee = (catName: string | null, desc: string | null) => {
+    const c = (catName || '').toLowerCase();
+    const d = (desc || '').toLowerCase();
+    return (
+      c.includes('bank charge') ||
+      c.includes('bank fee') ||
+      d.includes('bank fee') ||
+      d.includes('service charge') ||
+      d.includes('bank charge')
+    );
+  };
 
   const breakdowns: AccountBalanceBreakdown[] = [];
 
@@ -292,157 +336,92 @@ export async function getAccountBalanceBreakdowns(
     }
 
     const linkedCards = accounts.filter((c) => c.linkedParentAccountId === acc.id);
-    const allIds = [acc.id, ...linkedCards.map((c) => c.id)];
+    const allIds = new Set([acc.id, ...linkedCards.map((c) => c.id)]);
+    const isLiability = acc.accountType === 'CREDIT_CARD';
 
-    const dateClause =
-      filter?.startDate && filter?.endDate
-        ? 'AND transaction_date BETWEEN $3 AND $4'
-        : filter?.startDate
-        ? 'AND transaction_date >= $3'
-        : filter?.endDate
-        ? 'AND transaction_date <= $3'
-        : '';
-    const dateParams: any[] = [];
-    if (filter?.startDate && filter?.endDate) dateParams.push(filter.startDate, filter.endDate);
-    else if (filter?.startDate) dateParams.push(filter.startDate);
-    else if (filter?.endDate) dateParams.push(filter.endDate);
+    let totalIncomeDec = new Decimal(0);
+    let totalExpensesDec = new Decimal(0);
+    let bankChargesDec = new Decimal(0);
+    let withdrawalsDec = new Decimal(0);
+    let depositsDec = new Decimal(0);
+    let incomingTransfersDec = new Decimal(0);
+    let outgoingTransfersDec = new Decimal(0);
 
-    const incRes = await query(
-      `SELECT COALESCE(SUM(actual_lkr_amount), 0) AS total
-       FROM transactions
-       WHERE household_id = $1 AND transaction_type = 'INCOME' AND source_account_id = $2 ${dateClause}`,
-      [householdId, acc.id, ...dateParams]
-    );
-    const totalIncome = toMoneyString(incRes.rows[0].total);
+    // All-time balance accumulators
+    let allTimeIncome = new Decimal(0);
+    let allTimeExpenses = new Decimal(0);
+    let allTimeInTrans = new Decimal(0);
+    let allTimeOutTrans = new Decimal(0);
 
-    const bankChargesRes = await query(
-      `SELECT COALESCE(SUM(t.actual_lkr_amount), 0) AS total
-       FROM transactions t
-       LEFT JOIN categories c ON t.category_id = c.id
-       WHERE t.household_id = $1 AND t.transaction_type = 'EXPENSE'
-         AND t.source_account_id = ANY($2::uuid[])
-         AND (c.name ILIKE '%Bank Charge%' OR t.description ILIKE '%Bank Fee%' OR t.description ILIKE '%Service Charge%')
-         ${dateClause.replace(/\$3/g, '$3').replace(/\$4/g, '$4')}`,
-      [householdId, allIds, ...dateParams]
-    );
-    const bankCharges = toMoneyString(bankChargesRes.rows[0].total);
+    for (const t of txRows) {
+      const amt = toDecimal(t.actual_lkr_amount || 0);
+      const isSrc = allIds.has(t.source_account_id);
+      const isDirectSrc = t.source_account_id === acc.id;
+      const isDst = t.destination_account_id === acc.id;
+      const inRange = inDateRange(t.transaction_date);
 
-    const expRes = await query(
-      `SELECT COALESCE(SUM(t.actual_lkr_amount), 0) AS total
-       FROM transactions t
-       LEFT JOIN categories c ON t.category_id = c.id
-       WHERE t.household_id = $1 AND t.transaction_type = 'EXPENSE'
-         AND t.source_account_id = ANY($2::uuid[])
-         AND NOT (c.name ILIKE '%Bank Charge%' OR t.description ILIKE '%Bank Fee%' OR t.description ILIKE '%Service Charge%')
-         ${dateClause.replace(/\$3/g, '$3').replace(/\$4/g, '$4')}`,
-      [householdId, allIds, ...dateParams]
-    );
-    const totalExpenses = toMoneyString(expRes.rows[0].total);
+      // All-time balance tracking
+      if (t.transaction_type === 'INCOME' && isDirectSrc) {
+        allTimeIncome = allTimeIncome.plus(amt);
+      } else if (t.transaction_type === 'EXPENSE' && isSrc) {
+        allTimeExpenses = allTimeExpenses.plus(amt);
+      } else if (t.transaction_type === 'TRANSFER') {
+        if (isDst) allTimeInTrans = allTimeInTrans.plus(amt);
+        if (isSrc) allTimeOutTrans = allTimeOutTrans.plus(amt);
+      }
 
-    let withdrawals = '0.00';
-    let deposits = '0.00';
-    let incomingTransfers = '0.00';
-    let outgoingTransfers = '0.00';
+      // Date-filtered breakdown tracking
+      if (!inRange) continue;
 
-    if (acc.accountType === 'CASH') {
-      const wRes = await query(
-        `SELECT COALESCE(SUM(t.actual_lkr_amount), 0) AS total
-         FROM transactions t
-         JOIN accounts src ON t.source_account_id = src.id
-         WHERE t.household_id = $1 AND t.transaction_type = 'TRANSFER'
-           AND t.destination_account_id = $2
-           AND src.account_type IN ('BANK_SAVINGS', 'BANK_CURRENT')
-           ${dateClause}`,
-        [householdId, acc.id, ...dateParams]
-      );
-      withdrawals = toMoneyString(wRes.rows[0].total);
+      if (t.transaction_type === 'INCOME' && isDirectSrc) {
+        totalIncomeDec = totalIncomeDec.plus(amt);
+      } else if (t.transaction_type === 'EXPENSE' && isSrc) {
+        if (isBankFee(t.category_name, t.description)) {
+          bankChargesDec = bankChargesDec.plus(amt);
+        } else {
+          totalExpensesDec = totalExpensesDec.plus(amt);
+        }
+      } else if (t.transaction_type === 'TRANSFER') {
+        const srcIsBank =
+          t.source_account_type === 'BANK_SAVINGS' || t.source_account_type === 'BANK_CURRENT';
+        const dstIsBank =
+          t.destination_account_type === 'BANK_SAVINGS' || t.destination_account_type === 'BANK_CURRENT';
+        const srcIsCash = t.source_account_type === 'CASH';
+        const dstIsCash = t.destination_account_type === 'CASH';
 
-      const dRes = await query(
-        `SELECT COALESCE(SUM(t.actual_lkr_amount), 0) AS total
-         FROM transactions t
-         JOIN accounts dst ON t.destination_account_id = dst.id
-         WHERE t.household_id = $1 AND t.transaction_type = 'TRANSFER'
-           AND t.source_account_id = $2
-           AND dst.account_type IN ('BANK_SAVINGS', 'BANK_CURRENT')
-           ${dateClause}`,
-        [householdId, acc.id, ...dateParams]
-      );
-      deposits = toMoneyString(dRes.rows[0].total);
-
-      const inOther = await query(
-        `SELECT COALESCE(SUM(t.actual_lkr_amount), 0) AS total
-         FROM transactions t
-         JOIN accounts src ON t.source_account_id = src.id
-         WHERE t.household_id = $1 AND t.transaction_type = 'TRANSFER'
-           AND t.destination_account_id = $2
-           AND src.account_type = 'CASH'
-           ${dateClause}`,
-        [householdId, acc.id, ...dateParams]
-      );
-      incomingTransfers = toMoneyString(inOther.rows[0].total);
-
-      const outOther = await query(
-        `SELECT COALESCE(SUM(t.actual_lkr_amount), 0) AS total
-         FROM transactions t
-         JOIN accounts dst ON t.destination_account_id = dst.id
-         WHERE t.household_id = $1 AND t.transaction_type = 'TRANSFER'
-           AND t.source_account_id = $2
-           AND dst.account_type = 'CASH'
-           ${dateClause}`,
-        [householdId, acc.id, ...dateParams]
-      );
-      outgoingTransfers = toMoneyString(outOther.rows[0].total);
-    } else {
-      const wRes = await query(
-        `SELECT COALESCE(SUM(t.actual_lkr_amount), 0) AS total
-         FROM transactions t
-         JOIN accounts dst ON t.destination_account_id = dst.id
-         WHERE t.household_id = $1 AND t.transaction_type = 'TRANSFER'
-           AND t.source_account_id = ANY($2::uuid[])
-           AND dst.account_type = 'CASH'
-           ${dateClause.replace(/\$3/g, '$3').replace(/\$4/g, '$4')}`,
-        [householdId, allIds, ...dateParams]
-      );
-      withdrawals = toMoneyString(wRes.rows[0].total);
-
-      const dRes = await query(
-        `SELECT COALESCE(SUM(t.actual_lkr_amount), 0) AS total
-         FROM transactions t
-         JOIN accounts src ON t.source_account_id = src.id
-         WHERE t.household_id = $1 AND t.transaction_type = 'TRANSFER'
-           AND t.destination_account_id = $2
-           AND src.account_type = 'CASH'
-           ${dateClause}`,
-        [householdId, acc.id, ...dateParams]
-      );
-      deposits = toMoneyString(dRes.rows[0].total);
-
-      const inOther = await query(
-        `SELECT COALESCE(SUM(t.actual_lkr_amount), 0) AS total
-         FROM transactions t
-         JOIN accounts src ON t.source_account_id = src.id
-         WHERE t.household_id = $1 AND t.transaction_type = 'TRANSFER'
-           AND t.destination_account_id = $2
-           AND src.account_type != 'CASH'
-           ${dateClause}`,
-        [householdId, acc.id, ...dateParams]
-      );
-      incomingTransfers = toMoneyString(inOther.rows[0].total);
-
-      const outOther = await query(
-        `SELECT COALESCE(SUM(t.actual_lkr_amount), 0) AS total
-         FROM transactions t
-         JOIN accounts dst ON t.destination_account_id = dst.id
-         WHERE t.household_id = $1 AND t.transaction_type = 'TRANSFER'
-           AND t.source_account_id = ANY($2::uuid[])
-           AND dst.account_type != 'CASH'
-           ${dateClause.replace(/\$3/g, '$3').replace(/\$4/g, '$4')}`,
-        [householdId, allIds, ...dateParams]
-      );
-      outgoingTransfers = toMoneyString(outOther.rows[0].total);
+        if (acc.accountType === 'CASH') {
+          if (isDst && srcIsBank) {
+            withdrawalsDec = withdrawalsDec.plus(amt);
+          } else if (isDirectSrc && dstIsBank) {
+            depositsDec = depositsDec.plus(amt);
+          } else if (isDst && srcIsCash) {
+            incomingTransfersDec = incomingTransfersDec.plus(amt);
+          } else if (isDirectSrc && dstIsCash) {
+            outgoingTransfersDec = outgoingTransfersDec.plus(amt);
+          }
+        } else {
+          if (isSrc && dstIsCash) {
+            withdrawalsDec = withdrawalsDec.plus(amt);
+          } else if (isDst && srcIsCash) {
+            depositsDec = depositsDec.plus(amt);
+          } else if (isDst && !srcIsCash) {
+            incomingTransfersDec = incomingTransfersDec.plus(amt);
+          } else if (isSrc && !dstIsCash) {
+            outgoingTransfersDec = outgoingTransfersDec.plus(amt);
+          }
+        }
+      }
     }
 
-    const calculatedBal = await recalculateAccountBalance(householdId, acc.id);
+    const opening = toDecimal(acc.openingBalance || 0);
+    let calculatedBalDec: Decimal;
+    if (isLiability) {
+      calculatedBalDec = opening.plus(allTimeExpenses).minus(allTimeInTrans).minus(allTimeIncome).plus(allTimeOutTrans);
+    } else {
+      calculatedBalDec = opening.plus(allTimeIncome).plus(allTimeInTrans).minus(allTimeExpenses).minus(allTimeOutTrans);
+    }
+
+    const currentCalculatedBalance = toMoneyString(calculatedBalDec);
 
     breakdowns.push({
       accountId: acc.id,
@@ -455,14 +434,14 @@ export async function getAccountBalanceBreakdowns(
       linkedParentAccountId: acc.linkedParentAccountId,
       openingBalance: acc.openingBalance,
       openingBalanceDate: acc.openingBalanceDate || '2026-11-01',
-      totalIncome,
-      totalExpenses,
-      bankCharges,
-      withdrawals,
-      deposits,
-      incomingTransfers,
-      outgoingTransfers,
-      currentCalculatedBalance: calculatedBal,
+      totalIncome: toMoneyString(totalIncomeDec),
+      totalExpenses: toMoneyString(totalExpensesDec),
+      bankCharges: toMoneyString(bankChargesDec),
+      withdrawals: toMoneyString(withdrawalsDec),
+      deposits: toMoneyString(depositsDec),
+      incomingTransfers: toMoneyString(incomingTransfersDec),
+      outgoingTransfers: toMoneyString(outgoingTransfersDec),
+      currentCalculatedBalance,
       status: acc.status,
     });
   }

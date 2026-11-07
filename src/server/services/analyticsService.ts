@@ -68,32 +68,40 @@ export async function getDashboardSummary(
   const sixMonthsAgoDt = new Date(Date.UTC(endYear, endMonth - 6, 1));
   const sixMonthsStart = sixMonthsAgoDt.toISOString().slice(0, 10);
 
+  // Combined earliest start date for transactions and savings contributions
+  const windowStart = [sixMonthsStart, prevStart, startDate].sort()[0];
+
+  // Batch 1: Parallel fetch of primary domain entities (single network roundtrip)
   const [
-    currTxs,
-    prevTxs,
-    sixMonthTxs,
-    currSavingsContribs,
-    prevSavingsContribs,
-    sixMonthSavingsContribs,
+    allWindowTxs,
+    allSavingsContribs,
     accounts,
     loans,
     subscriptions,
     recurringSchedules,
-    budgetEval,
-    accountBreakdowns,
   ] = await Promise.all([
-    listTransactions(householdId, { startDate, endDate }),
-    listTransactions(householdId, { startDate: prevStart, endDate: prevEnd }),
-    listTransactions(householdId, { startDate: sixMonthsStart, endDate }),
-    listSavingsContributionsByPeriod(householdId, startDate, endDate),
-    listSavingsContributionsByPeriod(householdId, prevStart, prevEnd),
-    listSavingsContributionsByPeriod(householdId, sixMonthsStart, endDate),
+    listTransactions(householdId, { startDate: windowStart, endDate }),
+    listSavingsContributionsByPeriod(householdId, windowStart, endDate),
     listAccounts(householdId),
     listLoans(householdId),
     listSubscriptions(householdId),
     listRecurringSchedules(householdId),
-    getMonthlyBudgetsWithActuals(householdId, endYear, endMonth),
-    getAccountBalanceBreakdowns(householdId, { startDate, endDate }),
+  ]);
+
+  // Partition transactions in memory (< 1ms execution, 0 network requests)
+  const currTxs = allWindowTxs.filter((t) => t.transactionDate >= startDate && t.transactionDate <= endDate);
+  const prevTxs = allWindowTxs.filter((t) => t.transactionDate >= prevStart && t.transactionDate <= prevEnd);
+  const sixMonthTxs = allWindowTxs.filter((t) => t.transactionDate >= sixMonthsStart && t.transactionDate <= endDate);
+
+  // Partition savings contributions in memory (< 1ms execution, 0 network requests)
+  const currSavingsContribs = allSavingsContribs.filter((c) => c.contributionDate >= startDate && c.contributionDate <= endDate);
+  const prevSavingsContribs = allSavingsContribs.filter((c) => c.contributionDate >= prevStart && c.contributionDate <= prevEnd);
+  const sixMonthSavingsContribs = allSavingsContribs.filter((c) => c.contributionDate >= sixMonthsStart && c.contributionDate <= endDate);
+
+  // Batch 2: Budgets & Account Breakdowns using pre-fetched datasets
+  const [budgetEval, accountBreakdowns] = await Promise.all([
+    getMonthlyBudgetsWithActuals(householdId, endYear, endMonth, { currTxs, prevTxs }),
+    getAccountBalanceBreakdowns(householdId, { startDate, endDate }, { accounts }),
   ]);
 
   const currAgg = aggregatePeriodTransactions(currTxs, currSavingsContribs);

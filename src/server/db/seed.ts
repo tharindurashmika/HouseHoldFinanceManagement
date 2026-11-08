@@ -103,6 +103,7 @@ export const INITIAL_CATEGORIES: CategorySeedDef[] = [
     subcategories: [
       { name: 'Borrowed from Parents', defaultEssentiality: true, isFixedDefault: false },
       { name: 'Borrowed from Friends', defaultEssentiality: true, isFixedDefault: false },
+      { name: 'Repayment Received from Friends / Relatives', defaultEssentiality: true, isFixedDefault: false },
     ],
   },
   {
@@ -138,6 +139,9 @@ export const INITIAL_CATEGORIES: CategorySeedDef[] = [
       { name: 'Personal Bank Loan 2', defaultEssentiality: true, isFixedDefault: true },
       { name: 'Motorcycle / Bike Finance', defaultEssentiality: true, isFixedDefault: true },
       { name: 'Repayment to Friends / Parents', defaultEssentiality: true, isFixedDefault: false },
+      { name: 'Repayment to Parents', defaultEssentiality: true, isFixedDefault: false },
+      { name: 'Repayment to Friends / Others', defaultEssentiality: true, isFixedDefault: false },
+      { name: 'Money Lent to Friends / Relatives', defaultEssentiality: true, isFixedDefault: false },
       { name: 'Other Loans', defaultEssentiality: true, isFixedDefault: true },
     ],
   },
@@ -544,6 +548,75 @@ export async function ensureAccountsAndCategoriesMigrated(executor?: { query: ty
     }
   } catch (err) {
     console.warn('Notice ensuring fee category:', err);
+  }
+
+  // Ensure Loan Repayments subcategories exist under Loans and Financial Commitments
+  try {
+    const loanCommitCat = await db.query(
+      `SELECT id FROM categories WHERE household_id = $1 AND name = 'Loans and Financial Commitments' AND parent_id IS NULL`,
+      [SEED_IDS.household]
+    );
+    if (loanCommitCat.rows.length > 0) {
+      const parentId = loanCommitCat.rows[0].id;
+      const subcatsToAdd = [
+        'Repayment to Friends / Parents',
+        'Repayment to Parents',
+        'Repayment to Friends / Others',
+        'Money Lent to Friends / Relatives',
+      ];
+      for (let i = 0; i < subcatsToAdd.length; i++) {
+        const subName = subcatsToAdd[i];
+        const existingSub = await db.query(
+          `SELECT id FROM categories WHERE household_id = $1 AND parent_id = $2 AND name = $3`,
+          [SEED_IDS.household, parentId, subName]
+        );
+        if (existingSub.rows.length === 0) {
+          const subId = generateUUID();
+          await db.query(
+            `INSERT INTO categories (
+              id, household_id, parent_id, name, type, default_essentiality, is_fixed_default, icon, color, is_system_seeded, sort_order
+            ) VALUES ($1, $2, $3, $4, 'EXPENSE', TRUE, FALSE, 'Users', '#ef4444', TRUE, $5)`,
+            [subId, SEED_IDS.household, parentId, subName, 40 + i]
+          );
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Notice ensuring loan repayment subcategories:', err);
+  }
+
+  // Ensure Borrowed Income subcategories exist under Borrowed from Friends / Parents
+  try {
+    const borrowedCat = await db.query(
+      `SELECT id FROM categories WHERE household_id = $1 AND name = 'Borrowed from Friends / Parents' AND parent_id IS NULL`,
+      [SEED_IDS.household]
+    );
+    if (borrowedCat.rows.length > 0) {
+      const parentId = borrowedCat.rows[0].id;
+      const subcatsToAdd = [
+        'Borrowed from Parents',
+        'Borrowed from Friends',
+        'Repayment Received from Friends / Relatives',
+      ];
+      for (let i = 0; i < subcatsToAdd.length; i++) {
+        const subName = subcatsToAdd[i];
+        const existingSub = await db.query(
+          `SELECT id FROM categories WHERE household_id = $1 AND parent_id = $2 AND name = $3`,
+          [SEED_IDS.household, parentId, subName]
+        );
+        if (existingSub.rows.length === 0) {
+          const subId = generateUUID();
+          await db.query(
+            `INSERT INTO categories (
+              id, household_id, parent_id, name, type, default_essentiality, is_fixed_default, icon, color, is_system_seeded, sort_order
+            ) VALUES ($1, $2, $3, $4, 'INCOME', TRUE, FALSE, 'Users', '#f59e0b', TRUE, 15 + i)`,
+            [subId, SEED_IDS.household, parentId, subName, 15 + i]
+          );
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Notice ensuring borrowed income subcategories:', err);
   }
 }
 

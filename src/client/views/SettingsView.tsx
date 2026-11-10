@@ -546,7 +546,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
             <div>
               <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <span>Smart Receipt & Bill Scanner (Gemini 1.5 Flash Vision)</span>
+                <span>Smart Receipt & Bill Scanner (Gemini 3.8 Flash Vision)</span>
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 font-bold uppercase">
                   100% Free
                 </span>

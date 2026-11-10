@@ -23,27 +23,29 @@ const STORAGE_KEY = 'hf_gemini_api_key';
 const MODEL_CACHE_KEY = 'hf_gemini_resolved_model';
 
 const PREFERRED_MODELS = [
+  'models/gemini-3.8-flash',
+  'models/gemini-3.5-flash-lite',
+  'models/gemini-3.5-flash',
+  'models/gemini-3.0-flash',
+  'models/gemini-flash-latest',
   'models/gemini-2.5-flash',
   'models/gemini-2.0-flash',
   'models/gemini-2.0-flash-001',
   'models/gemini-2.0-flash-lite',
-  'models/gemini-flash-latest',
   'models/gemini-1.5-flash-latest',
-  'models/gemini-1.5-flash-002',
   'models/gemini-1.5-flash',
-  'models/gemini-2.5-pro',
-  'models/gemini-1.5-pro-latest',
 ];
 
 /**
- * Queries ModelService.ListModels to dynamically pick the best available Vision/Flash model
- * for this user's API key and region, avoiding 404 deprecated model errors.
+ * Queries ModelService.ListModels and returns an ordered list of candidate models
+ * prioritizing Gemini 3.8 Flash / 3.5 Flash Lite and newer generations first.
  */
-export async function resolveBestGeminiModel(apiKey: string, forceRefresh = false): Promise<string> {
-  if (!forceRefresh && typeof window !== 'undefined') {
-    const cached = localStorage.getItem(MODEL_CACHE_KEY);
-    if (cached) return cached;
-  }
+export async function getCandidateGeminiModels(apiKey: string): Promise<string[]> {
+  const candidates: string[] = [];
+  const addCandidate = (m: string) => {
+    const normalized = m.startsWith('models/') ? m : `models/${m}`;
+    if (!candidates.includes(normalized)) candidates.push(normalized);
+  };
 
   try {
     const res = await fetch(
@@ -65,32 +67,124 @@ export async function resolveBestGeminiModel(apiKey: string, forceRefresh = fals
 
       const availableNames = new Set(supported.map((m) => m.name));
 
+      // 1. Add preferred models that exist in ListModels
       for (const pref of PREFERRED_MODELS) {
         if (availableNames.has(pref)) {
-          if (typeof window !== 'undefined') localStorage.setItem(MODEL_CACHE_KEY, pref);
-          return pref;
+          addCandidate(pref);
         }
       }
 
-      // Fallback to any flash model supporting generateContent
-      const anyFlash = supported.find((m) => m.name.toLowerCase().includes('flash'));
-      if (anyFlash) {
-        if (typeof window !== 'undefined') localStorage.setItem(MODEL_CACHE_KEY, anyFlash.name);
-        return anyFlash.name;
+      // 2. Add any newer flash models sorted descending (e.g. gemini-4.x, gemini-3.x)
+      const flashModels = supported
+        .map((m) => m.name as string)
+        .filter((name) => name.toLowerCase().includes('flash'))
+        .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+
+      for (const fm of flashModels) {
+        addCandidate(fm);
       }
 
-      // Fallback to any gemini model supporting generateContent
-      const anyGemini = supported.find((m) => m.name.toLowerCase().includes('gemini'));
-      if (anyGemini) {
-        if (typeof window !== 'undefined') localStorage.setItem(MODEL_CACHE_KEY, anyGemini.name);
-        return anyGemini.name;
+      // 3. Add any remaining gemini models
+      for (const m of supported) {
+        if (m.name.toLowerCase().includes('gemini')) {
+          addCandidate(m.name);
+        }
       }
     }
   } catch {
-    // ignore and fallback to default
+    // ignore network error on listModels and fallback to static list
   }
 
-  return 'models/gemini-2.0-flash';
+  for (const pref of PREFERRED_MODELS) {
+    addCandidate(pref);
+  }
+
+  return candidates;
+}
+
+/**
+ * Executes generateContent with automatic fallback across candidate models if a model
+ * is restricted for new users (e.g., gemini-2.5-flash -> gemini-3.8-flash).
+ */
+async function executeGenerateContentWithFallback(
+  apiKey: string,
+  requestBody: any,
+  forceRefresh = false
+): Promise<{ data: any; modelUsed: string }> {
+  const cleanKey = apiKey.trim();
+  const candidates = await getCandidateGeminiModels(cleanKey);
+
+  if (!forceRefresh && typeof window !== 'undefined') {
+    const cached = localStorage.getItem(MODEL_CACHE_KEY);
+    if (cached && cached.startsWith('models/')) {
+      const idx = candidates.indexOf(cached);
+      if (idx > 0) {
+        candidates.splice(idx, 1);
+      }
+      if (idx !== 0) {
+        candidates.unshift(cached);
+      }
+    }
+  }
+
+  let lastErrorMsg = 'Failed to connect to Gemini API';
+  const tried = new Set<string>();
+
+  for (let i = 0; i < candidates.length; i++) {
+    const modelPath = candidates[i];
+    if (tried.has(modelPath)) continue;
+    tried.add(modelPath);
+
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/${modelPath}:generateContent?key=${encodeURIComponent(
+        cleanKey
+      )}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody),
+      }
+    );
+
+    if (res.ok) {
+      const data = await res.json();
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(MODEL_CACHE_KEY, modelPath);
+      }
+      return { data, modelUsed: modelPath };
+    }
+
+    const errJson = await res.json().catch(() => ({}));
+    const msg: string = errJson?.error?.message || `HTTP ${res.status}: ${res.statusText}`;
+    lastErrorMsg = msg;
+
+    // If the error message explicitly recommends a model (e.g. "Please update your code to use models/gemini-3.8-flash"), prioritize it next!
+    const suggestedMatch = msg.match(/models\/[a-z0-9.-]+/gi);
+    if (suggestedMatch) {
+      for (const suggested of suggestedMatch) {
+        const cleanSuggested = suggested.replace(/[.,;)'"]+$/, '');
+        if (!tried.has(cleanSuggested)) {
+          candidates.splice(i + 1, 0, cleanSuggested);
+        }
+      }
+    }
+
+    // If the error is an invalid API key or quota exhaustion (and not model availability), stop retrying
+    const lowerMsg = msg.toLowerCase();
+    const isModelError =
+      res.status === 404 ||
+      lowerMsg.includes('no longer available') ||
+      lowerMsg.includes('not found') ||
+      lowerMsg.includes('not supported') ||
+      lowerMsg.includes('update your code to use') ||
+      lowerMsg.includes('deprecated');
+
+    if (!isModelError) {
+      break;
+    }
+  }
+
+  throw new Error(lastErrorMsg);
 }
 
 export function getGeminiApiKey(): string {
@@ -168,30 +262,16 @@ export async function compressImage(file: File, maxDim = 1600, quality = 0.85): 
  */
 export async function testGeminiApiKey(apiKey: string): Promise<{ ok: boolean; message: string }> {
   try {
-    const cleanKey = apiKey.trim();
-    const modelPath = await resolveBestGeminiModel(cleanKey, true);
-
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/${modelPath}:generateContent?key=${encodeURIComponent(
-        cleanKey
-      )}`,
+    const { modelUsed } = await executeGenerateContentWithFallback(
+      apiKey,
       {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: 'Respond with the single word: OK' }] }],
-          generationConfig: { maxOutputTokens: 10 },
-        }),
-      }
+        contents: [{ parts: [{ text: 'Respond with the single word: OK' }] }],
+        generationConfig: { maxOutputTokens: 10 },
+      },
+      true
     );
 
-    if (!res.ok) {
-      const errJson = await res.json().catch(() => ({}));
-      const msg = errJson?.error?.message || `HTTP ${res.status}: ${res.statusText}`;
-      return { ok: false, message: msg };
-    }
-
-    const shortModelName = modelPath.replace('models/', '');
+    const shortModelName = modelUsed.replace('models/', '');
     return {
       ok: true,
       message: `Connected! Gemini Vision (${shortModelName}) is active and ready to scan bills.`,
@@ -285,41 +365,7 @@ Return STRICT JSON only matching this schema:
     },
   };
 
-  let modelPath = await resolveBestGeminiModel(apiKey, false);
-
-  let response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/${modelPath}:generateContent?key=${encodeURIComponent(
-      apiKey
-    )}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody),
-    }
-  );
-
-  // If cached model was deprecated or 404, force-refresh from ModelService.ListModels and retry
-  if (response.status === 404) {
-    modelPath = await resolveBestGeminiModel(apiKey, true);
-    response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/${modelPath}:generateContent?key=${encodeURIComponent(
-        apiKey
-      )}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody),
-      }
-    );
-  }
-
-  if (!response.ok) {
-    const errorJson = await response.json().catch(() => ({}));
-    const errorMsg = errorJson?.error?.message || `HTTP ${response.status}: ${response.statusText}`;
-    throw new Error(errorMsg);
-  }
-
-  const resultJson = await response.json();
+  const { data: resultJson } = await executeGenerateContentWithFallback(apiKey, requestBody, false);
   const rawContent = resultJson?.candidates?.[0]?.content?.parts?.[0]?.text;
 
   if (!rawContent) {

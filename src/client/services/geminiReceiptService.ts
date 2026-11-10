@@ -20,6 +20,78 @@ export interface ParsedReceiptResult {
 }
 
 const STORAGE_KEY = 'hf_gemini_api_key';
+const MODEL_CACHE_KEY = 'hf_gemini_resolved_model';
+
+const PREFERRED_MODELS = [
+  'models/gemini-2.5-flash',
+  'models/gemini-2.0-flash',
+  'models/gemini-2.0-flash-001',
+  'models/gemini-2.0-flash-lite',
+  'models/gemini-flash-latest',
+  'models/gemini-1.5-flash-latest',
+  'models/gemini-1.5-flash-002',
+  'models/gemini-1.5-flash',
+  'models/gemini-2.5-pro',
+  'models/gemini-1.5-pro-latest',
+];
+
+/**
+ * Queries ModelService.ListModels to dynamically pick the best available Vision/Flash model
+ * for this user's API key and region, avoiding 404 deprecated model errors.
+ */
+export async function resolveBestGeminiModel(apiKey: string, forceRefresh = false): Promise<string> {
+  if (!forceRefresh && typeof window !== 'undefined') {
+    const cached = localStorage.getItem(MODEL_CACHE_KEY);
+    if (cached) return cached;
+  }
+
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey.trim())}`
+    );
+    if (res.ok) {
+      const data = await res.json();
+      const models: any[] = Array.isArray(data?.models) ? data.models : [];
+      const supported = models.filter(
+        (m) =>
+          Array.isArray(m.supportedGenerationMethods) &&
+          m.supportedGenerationMethods.includes('generateContent') &&
+          typeof m.name === 'string' &&
+          !m.name.includes('tts') &&
+          !m.name.includes('embedding') &&
+          !m.name.includes('imagen') &&
+          !m.name.includes('aqa')
+      );
+
+      const availableNames = new Set(supported.map((m) => m.name));
+
+      for (const pref of PREFERRED_MODELS) {
+        if (availableNames.has(pref)) {
+          if (typeof window !== 'undefined') localStorage.setItem(MODEL_CACHE_KEY, pref);
+          return pref;
+        }
+      }
+
+      // Fallback to any flash model supporting generateContent
+      const anyFlash = supported.find((m) => m.name.toLowerCase().includes('flash'));
+      if (anyFlash) {
+        if (typeof window !== 'undefined') localStorage.setItem(MODEL_CACHE_KEY, anyFlash.name);
+        return anyFlash.name;
+      }
+
+      // Fallback to any gemini model supporting generateContent
+      const anyGemini = supported.find((m) => m.name.toLowerCase().includes('gemini'));
+      if (anyGemini) {
+        if (typeof window !== 'undefined') localStorage.setItem(MODEL_CACHE_KEY, anyGemini.name);
+        return anyGemini.name;
+      }
+    }
+  } catch {
+    // ignore and fallback to default
+  }
+
+  return 'models/gemini-2.0-flash';
+}
 
 export function getGeminiApiKey(): string {
   if (typeof window === 'undefined') return '';
@@ -96,9 +168,12 @@ export async function compressImage(file: File, maxDim = 1600, quality = 0.85): 
  */
 export async function testGeminiApiKey(apiKey: string): Promise<{ ok: boolean; message: string }> {
   try {
+    const cleanKey = apiKey.trim();
+    const modelPath = await resolveBestGeminiModel(cleanKey, true);
+
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(
-        apiKey.trim()
+      `https://generativelanguage.googleapis.com/v1beta/${modelPath}:generateContent?key=${encodeURIComponent(
+        cleanKey
       )}`,
       {
         method: 'POST',
@@ -116,7 +191,11 @@ export async function testGeminiApiKey(apiKey: string): Promise<{ ok: boolean; m
       return { ok: false, message: msg };
     }
 
-    return { ok: true, message: 'Gemini API Key is valid and working!' };
+    const shortModelName = modelPath.replace('models/', '');
+    return {
+      ok: true,
+      message: `Connected! Gemini Vision (${shortModelName}) is active and ready to scan bills.`,
+    };
   } catch (err: any) {
     return { ok: false, message: err?.message || 'Network error connecting to Gemini API' };
   }
@@ -206,8 +285,10 @@ Return STRICT JSON only matching this schema:
     },
   };
 
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(
+  let modelPath = await resolveBestGeminiModel(apiKey, false);
+
+  let response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/${modelPath}:generateContent?key=${encodeURIComponent(
       apiKey
     )}`,
     {
@@ -216,6 +297,21 @@ Return STRICT JSON only matching this schema:
       body: JSON.stringify(requestBody),
     }
   );
+
+  // If cached model was deprecated or 404, force-refresh from ModelService.ListModels and retry
+  if (response.status === 404) {
+    modelPath = await resolveBestGeminiModel(apiKey, true);
+    response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/${modelPath}:generateContent?key=${encodeURIComponent(
+        apiKey
+      )}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody),
+      }
+    );
+  }
 
   if (!response.ok) {
     const errorJson = await response.json().catch(() => ({}));
@@ -232,7 +328,12 @@ Return STRICT JSON only matching this schema:
 
   let parsed: any;
   try {
-    parsed = JSON.parse(rawContent);
+    const cleanedJson = rawContent
+      .replace(/^```json\s*/i, '')
+      .replace(/^```\s*/i, '')
+      .replace(/\s*```$/i, '')
+      .trim();
+    parsed = JSON.parse(cleanedJson);
   } catch (err) {
     throw new Error('Failed to parse Gemini output as JSON: ' + rawContent.slice(0, 200));
   }
@@ -299,3 +400,4 @@ Return STRICT JSON only matching this schema:
     rawTextSummary: rawContent.slice(0, 300),
   };
 }
+

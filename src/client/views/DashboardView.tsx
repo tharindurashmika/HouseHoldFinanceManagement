@@ -33,6 +33,7 @@ import {
   Receipt,
   Scale,
   Edit,
+  Camera,
 } from 'lucide-react';
 import { api } from '../api';
 import { formatDateSL, formatLKR } from '../../shared/decimal';
@@ -45,7 +46,7 @@ interface DashboardViewProps {
   refreshTrigger: number;
   startDate?: string;
   endDate?: string;
-  onQuickAdd: (type: TransactionType) => void;
+  onQuickAdd: (type: TransactionType, openScanner?: boolean) => void;
   onNavigate: (tab: string) => void;
 }
 
@@ -128,6 +129,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => onQuickAdd('EXPENSE', true)}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-bold shadow-sm shadow-blue-500/20 transition active:scale-95"
+            title="Scan receipt with Gemini 1.5 Flash Vision AI"
+          >
+            <Camera className="w-4 h-4" /> Scan Bill
+          </button>
           <button
             onClick={() => onQuickAdd('EXPENSE')}
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold shadow-sm transition active:scale-95"

@@ -1,9 +1,27 @@
 import React, { useState } from 'react';
-import { Users, Tag, Plus, Download, Trash2, Shield, Landmark, CreditCard, Wallet, Edit, Scale } from 'lucide-react';
+import {
+  Users,
+  Tag,
+  Plus,
+  Download,
+  Trash2,
+  Shield,
+  Landmark,
+  CreditCard,
+  Wallet,
+  Edit,
+  Scale,
+  Camera,
+  ExternalLink,
+  Key,
+  CheckCircle2,
+  AlertCircle,
+} from 'lucide-react';
 import { api } from '../api';
 import { formatLKR } from '../../shared/decimal';
 import { EditAccountModal } from '../components/EditAccountModal';
 import { AccountReconcileModal } from '../components/AccountReconcileModal';
+import { getGeminiApiKey, setGeminiApiKey, testGeminiApiKey } from '../services/geminiReceiptService';
 import type { Account, Category, User } from '../../shared/types';
 
 interface SettingsViewProps {
@@ -43,6 +61,28 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // Modals state
   const [editingAcc, setEditingAcc] = useState<Account | null>(null);
   const [reconcilingAccId, setReconcilingAccId] = useState<string | null>(null);
+
+  // Gemini API Key state
+  const [geminiKey, setGeminiKey] = useState(() => getGeminiApiKey());
+  const [testingKey, setTestingKey] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
+  const handleSaveGeminiKey = (e: React.FormEvent) => {
+    e.preventDefault();
+    setGeminiApiKey(geminiKey);
+    setSaveSuccess(true);
+    setTimeout(() => setSaveSuccess(false), 3000);
+  };
+
+  const handleTestGeminiKey = async () => {
+    if (!geminiKey) return;
+    setTestingKey(true);
+    setTestResult(null);
+    const res = await testGeminiApiKey(geminiKey);
+    setTestingKey(false);
+    setTestResult(res);
+  };
 
   const handleAddCategory = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -497,7 +537,90 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         activeUserId={activeUserId}
       />
 
-      {/* 4. Backup & Demo Data Controls */}
+      {/* 4. Smart Bill / Receipt Scanner Settings (Google Gemini 1.5 Flash) */}
+      <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <div className="p-2.5 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 shrink-0">
+              <Camera className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <span>Smart Receipt & Bill Scanner (Gemini 1.5 Flash Vision)</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 font-bold uppercase">
+                  100% Free
+                </span>
+              </h2>
+              <p className="text-xs text-slate-500">
+                Auto-extract total amounts, dates, merchants, and categories from phone camera photos of Keells, Cargills, CEB, and fuel slips.
+              </p>
+            </div>
+          </div>
+
+          <a
+            href="https://aistudio.google.com/app/apikey"
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold hover:bg-slate-100 shrink-0"
+          >
+            <span>Get Free Google Key</span>
+            <ExternalLink className="w-3.5 h-3.5" />
+          </a>
+        </div>
+
+        <form onSubmit={handleSaveGeminiKey} className="space-y-3">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+            <div className="relative flex-1">
+              <Key className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+              <input
+                type="password"
+                placeholder="Paste your Gemini API Key (e.g. AIzaSy...)"
+                value={geminiKey}
+                onChange={(e) => {
+                  setGeminiKey(e.target.value);
+                  setTestResult(null);
+                }}
+                className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-mono"
+              />
+            </div>
+            <button
+              type="submit"
+              className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-sm shrink-0"
+            >
+              Save Key
+            </button>
+            <button
+              type="button"
+              disabled={!geminiKey || testingKey}
+              onClick={handleTestGeminiKey}
+              className="px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold hover:bg-slate-100 disabled:opacity-50 shrink-0"
+            >
+              {testingKey ? 'Testing...' : 'Test Connection'}
+            </button>
+          </div>
+
+          {saveSuccess && (
+            <div className="text-xs font-semibold text-emerald-600 flex items-center gap-1.5">
+              <CheckCircle2 className="w-4 h-4" /> Gemini API Key saved to this device!
+            </div>
+          )}
+
+          {testResult && (
+            <div
+              className={`p-3 rounded-xl text-xs flex items-center gap-2 ${
+                testResult.ok
+                  ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                  : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
+              }`}
+            >
+              {testResult.ok ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <AlertCircle className="w-4 h-4 shrink-0" />}
+              <span>{testResult.message}</span>
+            </div>
+          )}
+        </form>
+      </div>
+
+      {/* 5. Backup & Demo Data Controls */}
       <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="flex items-start gap-3">
           <Shield className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />

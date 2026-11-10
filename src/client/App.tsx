@@ -126,6 +126,7 @@ export const App: React.FC = () => {
   // Global Quick-Add / Edit Transaction Modal state
   const [txModalOpen, setTxModalOpen] = useState<boolean>(false);
   const [txModalInitialType, setTxModalInitialType] = useState<TransactionType>('EXPENSE');
+  const [txModalAutoScan, setTxModalAutoScan] = useState<boolean>(false);
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
 
   // Global Shared Date Range Filter state across all views
@@ -211,15 +212,17 @@ export const App: React.FC = () => {
     triggerRefresh();
   };
 
-  const handleOpenNewTx = (type: TransactionType = 'EXPENSE') => {
+  const handleOpenNewTx = (type: TransactionType = 'EXPENSE', openScanner = false) => {
     setEditingTx(null);
     setTxModalInitialType(type);
+    setTxModalAutoScan(openScanner);
     setTxModalOpen(true);
   };
 
   const handleOpenEditTx = (tx: Transaction) => {
     setEditingTx(tx);
     setTxModalInitialType(tx.transactionType);
+    setTxModalAutoScan(false);
     setTxModalOpen(true);
   };
 
@@ -685,6 +688,7 @@ export const App: React.FC = () => {
         activeUserId={activeUser.userId}
         editingTransaction={editingTx}
         initialType={txModalInitialType}
+        autoOpenScanner={txModalAutoScan}
       />
 
       {/* Supabase Cloud & iPhone PWA Setup Modal */}

@@ -1,7 +1,27 @@
-import React, { useState, useEffect } from 'react';
-import { X, Plus, Trash2, Split, ArrowRightLeft, TrendingUp, TrendingDown } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  X,
+  Plus,
+  Trash2,
+  Split,
+  ArrowRightLeft,
+  TrendingUp,
+  TrendingDown,
+  Camera,
+  Sparkles,
+  Loader2,
+  CheckCircle2,
+  AlertCircle,
+  Key,
+} from 'lucide-react';
 import { api } from '../api';
 import { addMoney, formatLKR, getTodayDateString, mulMoney, toMoneyString } from '../../shared/decimal';
+import {
+  getGeminiApiKey,
+  hasGeminiApiKey,
+  parseReceiptWithGemini,
+  setGeminiApiKey,
+} from '../services/geminiReceiptService';
 import type {
   Account,
   Category,
@@ -22,6 +42,7 @@ interface TransactionModalProps {
   activeUserId: string;
   initialType?: TransactionType;
   editingTransaction?: Transaction | null;
+  autoOpenScanner?: boolean;
 }
 
 export const TransactionModal: React.FC<TransactionModalProps> = ({
@@ -34,6 +55,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   activeUserId,
   initialType = 'EXPENSE',
   editingTransaction = null,
+  autoOpenScanner = false,
 }) => {
   const [transactionType, setTransactionType] = useState<TransactionType>(initialType);
   const [transactionDate, setTransactionDate] = useState<string>(() => getTodayDateString());
@@ -62,6 +84,13 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   >([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Gemini Smart Receipt Scanner state
+  const [isScanning, setIsScanning] = useState(false);
+  const [scanMessage, setScanMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [showKeyPrompt, setShowKeyPrompt] = useState(false);
+  const [tempApiKey, setTempApiKey] = useState('');
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const filteredCategories = categories.filter((c) =>
     transactionType === 'INCOME' ? c.type === 'INCOME' : c.type === 'EXPENSE'
@@ -402,6 +431,86 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
     }
   };
 
+  useEffect(() => {
+    if (isOpen && autoOpenScanner && transactionType === 'EXPENSE') {
+      if (hasGeminiApiKey()) {
+        const timer = setTimeout(() => {
+          fileInputRef.current?.click();
+        }, 200);
+        return () => clearTimeout(timer);
+      } else {
+        setShowKeyPrompt(true);
+      }
+    }
+  }, [isOpen, autoOpenScanner, transactionType]);
+
+  const handleScanReceiptClick = () => {
+    if (!hasGeminiApiKey()) {
+      setShowKeyPrompt(true);
+      return;
+    }
+    fileInputRef.current?.click();
+  };
+
+  const handleReceiptFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsScanning(true);
+    setScanMessage(null);
+
+    try {
+      const parsed = await parseReceiptWithGemini(file, categories);
+
+      if (parsed.merchantName) {
+        setDescription(parsed.merchantName);
+      }
+      if (parsed.transactionDate) {
+        setTransactionDate(parsed.transactionDate);
+      }
+      if (parsed.totalAmountLkr && parsed.totalAmountLkr !== '0.00') {
+        setOriginalCurrency('LKR');
+        setOriginalAmount(parsed.totalAmountLkr);
+        setActualLkrAmount(parsed.totalAmountLkr);
+      }
+      if (parsed.suggestedCategoryId) {
+        handleCategoryChange(parsed.suggestedCategoryId);
+        if (parsed.suggestedSubcategoryId) {
+          setSubcategoryId(parsed.suggestedSubcategoryId);
+        }
+      }
+      if (parsed.paymentMethod) {
+        handlePaymentMethodChange(parsed.paymentMethod);
+      }
+      if (parsed.notes) {
+        setNotes((prev) => (prev ? `${prev}\n${parsed.notes}` : (parsed.notes || '')));
+      }
+      if (parsed.items && parsed.items.length > 0) {
+        setItems(
+          parsed.items.map((it) => ({
+            subcategoryId: it.suggestedSubcategoryId || parsed.suggestedSubcategoryId || '',
+            itemName: it.itemName,
+            quantity: it.quantity || '1',
+            amountLkr: it.amountLkr,
+          }))
+        );
+      }
+
+      setScanMessage({
+        type: 'success',
+        text: `Scanned "${parsed.merchantName}" • LKR ${formatLKR(parsed.totalAmountLkr)} successfully populated!`,
+      });
+    } catch (err: any) {
+      setScanMessage({
+        type: 'error',
+        text: err?.message || 'Failed to scan receipt. Please verify image and try again.',
+      });
+    } finally {
+      setIsScanning(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
   const renderAccountOptions = (accs: Account[]) => {
     const cashWallets = accs.filter((a) => a.accountType === 'CASH');
     const debitCards = accs.filter((a) => a.accountType === 'DEBIT_CARD');
@@ -654,6 +763,124 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                 </div>
               </div>
             </>
+          )}
+
+          {transactionType === 'EXPENSE' && (
+            <div className="p-3.5 rounded-2xl bg-gradient-to-r from-blue-50/90 via-indigo-50/70 to-slate-50 dark:from-blue-950/40 dark:via-indigo-950/30 dark:to-slate-900 border border-blue-200 dark:border-blue-800/60 shadow-xs">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={handleReceiptFileChange}
+                className="hidden"
+              />
+
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-blue-600 text-white shrink-0 shadow-sm">
+                    <Camera className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                      <span>Smart Bill &amp; Receipt Scanner</span>
+                      <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 font-bold uppercase">
+                        AI Vision
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Snap or upload Keells, Cargills, CEB, LECO, or fuel slips to auto-fill
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={isScanning}
+                  onClick={handleScanReceiptClick}
+                  className="w-full sm:w-auto px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs font-bold shadow-sm flex items-center justify-center gap-1.5 shrink-0 transition disabled:opacity-50"
+                >
+                  {isScanning ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Analyzing Receipt...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Camera className="w-3.5 h-3.5" />
+                      <span>Take Photo / Scan</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {scanMessage && (
+                <div
+                  className={`mt-2.5 p-2 rounded-xl text-xs flex items-center gap-2 ${
+                    scanMessage.type === 'success'
+                      ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-800'
+                      : 'bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-200 border border-rose-300 dark:border-rose-800'
+                  }`}
+                >
+                  {scanMessage.type === 'success' ? (
+                    <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                  ) : (
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  )}
+                  <span>{scanMessage.text}</span>
+                </div>
+              )}
+
+              {showKeyPrompt && (
+                <div className="mt-3 p-3 rounded-xl bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-700 shadow-sm space-y-2">
+                  <div className="text-xs font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                    <Key className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Enter your Free Google Gemini API Key</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500">
+                    Get your key from{' '}
+                    <a
+                      href="https://aistudio.google.com/app/apikey"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-blue-600 underline font-semibold"
+                    >
+                      Google AI Studio
+                    </a>{' '}
+                    (100% free, 1,500 scans/day).
+                  </p>
+                  <div className="flex gap-2">
+                    <input
+                      type="password"
+                      placeholder="AIzaSy..."
+                      value={tempApiKey}
+                      onChange={(e) => setTempApiKey(e.target.value)}
+                      className="flex-1 px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 text-xs font-mono"
+                    />
+                    <button
+                      type="button"
+                      disabled={!tempApiKey.trim()}
+                      onClick={() => {
+                        setGeminiApiKey(tempApiKey.trim());
+                        setShowKeyPrompt(false);
+                        setTempApiKey('');
+                        setTimeout(() => fileInputRef.current?.click(), 100);
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-bold disabled:opacity-50"
+                    >
+                      Save &amp; Scan
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowKeyPrompt(false)}
+                      className="px-2.5 py-1.5 rounded-lg text-xs text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

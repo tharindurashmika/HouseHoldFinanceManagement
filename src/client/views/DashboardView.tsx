@@ -43,21 +43,24 @@ import type { Account, DashboardSummary, TransactionType } from '../../shared/ty
 
 interface DashboardViewProps {
   refreshTrigger: number;
+  startDate?: string;
+  endDate?: string;
   onQuickAdd: (type: TransactionType) => void;
   onNavigate: (tab: string) => void;
 }
 
-type FilterPreset = 'CURRENT_MONTH' | 'PREV_MONTH' | 'LAST_3M' | 'LAST_6M' | 'CURRENT_YEAR' | 'CUSTOM';
-
 export const DashboardView: React.FC<DashboardViewProps> = ({
   refreshTrigger,
+  startDate: propStartDate,
+  endDate: propEndDate,
   onQuickAdd,
   onNavigate,
 }) => {
-  // Default to November 2026
-  const [preset, setPreset] = useState<FilterPreset>('CURRENT_MONTH');
-  const [startDate, setStartDate] = useState<string>('2026-11-01');
-  const [endDate, setEndDate] = useState<string>('2026-11-30');
+  const [internalStartDate, setInternalStartDate] = useState<string>('2026-11-01');
+  const [internalEndDate, setInternalEndDate] = useState<string>('2026-11-30');
+
+  const startDate = propStartDate || internalStartDate;
+  const endDate = propEndDate || internalEndDate;
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [reconcileModalOpen, setReconcileModalOpen] = useState(false);
@@ -76,26 +79,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   useEffect(() => {
     loadAccounts();
   }, [refreshTrigger]);
-
-  const applyPreset = (p: FilterPreset) => {
-    setPreset(p);
-    if (p === 'CURRENT_MONTH') {
-      setStartDate('2026-11-01');
-      setEndDate('2026-11-30');
-    } else if (p === 'PREV_MONTH') {
-      setStartDate('2026-10-01');
-      setEndDate('2026-10-31');
-    } else if (p === 'LAST_3M') {
-      setStartDate('2026-09-01');
-      setEndDate('2026-11-30');
-    } else if (p === 'LAST_6M') {
-      setStartDate('2026-06-01');
-      setEndDate('2026-11-30');
-    } else if (p === 'CURRENT_YEAR') {
-      setStartDate('2026-01-01');
-      setEndDate('2026-12-31');
-    }
-  };
 
   useEffect(() => {
     let active = true;
@@ -137,66 +120,31 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Top Filter & Quick Action Bar */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
-        <div className="flex flex-wrap items-center gap-1.5">
-          {(
-            [
-              { id: 'CURRENT_MONTH', label: 'Current Month (Nov)' },
-              { id: 'PREV_MONTH', label: 'Oct 2026 (Full Month)' },
-              { id: 'LAST_3M', label: 'Last 3 Months' },
-              { id: 'LAST_6M', label: 'Last 6 Months' },
-              { id: 'CURRENT_YEAR', label: 'Current Year (2026)' },
-              { id: 'CUSTOM', label: 'Custom Range' },
-            ] as const
-          ).map((btn) => (
-            <button
-              key={btn.id}
-              onClick={() => applyPreset(btn.id)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-                preset === btn.id
-                  ? 'bg-blue-600 text-white shadow-sm'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-              }`}
-            >
-              {btn.label}
-            </button>
-          ))}
+      {/* Quick Action Bar & Active Period Badge */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+        <div className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300">
+          <Calendar className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+          <span>Financial Overview: <strong className="text-blue-600 dark:text-blue-400">{summary.period.label}</strong></span>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {preset === 'CUSTOM' && (
-            <div className="flex items-center gap-2 text-xs">
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800"
-              />
-              <span>to</span>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800"
-              />
-            </div>
-          )}
-          <span className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1 px-2">
-            <Calendar className="w-3.5 h-3.5" />
-            {summary.period.label}
-          </span>
           <button
             onClick={() => onQuickAdd('EXPENSE')}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold shadow-sm"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold shadow-sm transition active:scale-95"
           >
             <Plus className="w-4 h-4" /> Add Expense
           </button>
           <button
             onClick={() => onQuickAdd('INCOME')}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-sm"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-sm transition active:scale-95"
           >
             <Plus className="w-4 h-4" /> Add Income
+          </button>
+          <button
+            onClick={() => onQuickAdd('TRANSFER')}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-sm transition active:scale-95"
+          >
+            <Plus className="w-4 h-4" /> Transfer
           </button>
         </div>
       </div>

@@ -16,12 +16,16 @@ import type { Transaction, TransactionType } from '../../shared/types';
 
 interface IncomeViewProps {
   refreshTrigger: number;
+  startDate?: string;
+  endDate?: string;
   onOpenNew: (type: TransactionType) => void;
   onOpenEdit: (tx: Transaction) => void;
 }
 
 export const IncomeView: React.FC<IncomeViewProps> = ({
   refreshTrigger,
+  startDate,
+  endDate,
   onOpenNew,
   onOpenEdit,
 }) => {
@@ -30,18 +34,22 @@ export const IncomeView: React.FC<IncomeViewProps> = ({
   const [selectedMonth, setSelectedMonth] = useState<string>('2026-11');
   const [loading, setLoading] = useState(true);
 
+  const effectiveMonth = startDate ? startDate.slice(0, 7) : selectedMonth;
+  const effectiveStartDate = startDate || `${selectedMonth}-01`;
+  const effectiveEndDate = endDate || `${selectedMonth}-31`;
+
   useEffect(() => {
     let active = true;
     setLoading(true);
     Promise.all([
       api.getTransactions({
         transactionType: 'INCOME',
-        startDate: '2026-06-01',
+        startDate: '2026-01-01',
         endDate: '2026-12-31',
       }),
       api.getTransactions({
-        startDate: `${selectedMonth}-01`,
-        endDate: `${selectedMonth}-31`,
+        startDate: effectiveStartDate,
+        endDate: effectiveEndDate,
       }),
     ])
       .then(([incRes, allRes]) => {
@@ -56,9 +64,11 @@ export const IncomeView: React.FC<IncomeViewProps> = ({
     return () => {
       active = false;
     };
-  }, [refreshTrigger, selectedMonth]);
+  }, [refreshTrigger, effectiveStartDate, effectiveEndDate]);
 
-  const monthTxs = incomeTxs.filter((t) => t.transactionDate.startsWith(selectedMonth));
+  const monthTxs = incomeTxs.filter(
+    (t) => t.transactionDate >= effectiveStartDate && t.transactionDate <= effectiveEndDate
+  );
 
   let husbandMonthTotal = '0.00';
   let wifeMonthTotal = '0.00';
@@ -156,7 +166,7 @@ export const IncomeView: React.FC<IncomeViewProps> = ({
       <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-blue-200 dark:border-blue-800 shadow-sm space-y-3">
         <div>
           <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-            Household Funding Sources (Api Wiyadam Karana Salli Kohenda Enne — {selectedMonth})
+            Household Funding Sources (Api Wiyadam Karana Salli Kohenda Enne — {effectiveMonth})
           </h3>
           <p className="text-xs text-slate-500">
             Tracks the 4 exact sources of household cash flow: Tharindu's salary (10th-12th / partial tranches), Wife's Basic + OT (~100k on 24th-26th), Borrowed from Friends/Parents, and Previous Savings Drawdowns
@@ -216,7 +226,7 @@ export const IncomeView: React.FC<IncomeViewProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
           <div className="flex items-center justify-between text-xs text-slate-500 font-semibold uppercase mb-2">
-            <span>Combined Household Income ({selectedMonth})</span>
+            <span>Combined Household Income ({effectiveMonth})</span>
             <TrendingUp className="w-4 h-4 text-emerald-500" />
           </div>
           <div className="text-2xl font-bold font-mono text-emerald-600 dark:text-emerald-400">

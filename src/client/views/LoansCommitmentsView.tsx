@@ -11,7 +11,7 @@ import {
   CreditCard,
 } from 'lucide-react';
 import { api } from '../api';
-import { formatDateSL, formatLKR, pctOf, subMoney } from '../../shared/decimal';
+import { formatDateSL, formatLKR, getTodayDateString, pctOf, subMoney } from '../../shared/decimal';
 import { calculateLoanInstallmentSplit } from '../../shared/calculations';
 import type {
   Account,
@@ -48,7 +48,7 @@ export const LoansCommitmentsView: React.FC<LoansCommitmentsViewProps> = ({
   // Loan modals
   const [showAddLoan, setShowAddLoan] = useState(false);
   const [payingLoan, setPayingLoan] = useState<Loan | null>(null);
-  const [paidDate, setPaidDate] = useState('2026-11-05');
+  const [paidDate, setPaidDate] = useState(() => getTodayDateString());
   const [paidAccountId, setPaidAccountId] = useState('');
   const [paidByUserId, setPaidByUserId] = useState(activeUserId);
   const [totalPaidLkr, setTotalPaidLkr] = useState('');
@@ -73,7 +73,7 @@ export const LoansCommitmentsView: React.FC<LoansCommitmentsViewProps> = ({
 
   // Pay Recurring modal
   const [payingSchedule, setPayingSchedule] = useState<RecurringSchedule | null>(null);
-  const [recPaidDate, setRecPaidDate] = useState('2026-11-03');
+  const [recPaidDate, setRecPaidDate] = useState(() => getTodayDateString());
   const [recActualAmt, setRecActualAmt] = useState('');
   const [recAccountId, setRecAccountId] = useState('');
   const [recBillStart, setRecBillStart] = useState('');
@@ -108,7 +108,7 @@ export const LoansCommitmentsView: React.FC<LoansCommitmentsViewProps> = ({
 
   const openPayLoanModal = (loan: Loan) => {
     setPayingLoan(loan);
-    setPaidDate('2026-11-05');
+    setPaidDate(getTodayDateString());
     setPaidAccountId(loan.defaultPaymentAccountId || accounts[0]?.id || '');
     setPaidByUserId(loan.ownerUserId || activeUserId);
 
@@ -188,7 +188,7 @@ export const LoansCommitmentsView: React.FC<LoansCommitmentsViewProps> = ({
     e.preventDefault();
     if (!reconcilingAccount) return;
     await api.reconcileAccount(reconcilingAccount.id, {
-      reconciliationDate: '2026-11-03',
+      reconciliationDate: getTodayDateString(),
       actualStatementBalance,
       createAdjustmentTransaction: false,
       reconciledByUserId: activeUserId,
@@ -603,7 +603,7 @@ export const LoansCommitmentsView: React.FC<LoansCommitmentsViewProps> = ({
                 <button
                   onClick={() => {
                     setPayingSchedule(rec);
-                    setRecPaidDate('2026-11-03');
+                    setRecPaidDate(getTodayDateString());
                     setRecActualAmt(rec.expectedAmountLkr);
                     setRecAccountId(rec.defaultAccountId);
                   }}

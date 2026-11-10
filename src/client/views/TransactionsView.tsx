@@ -28,15 +28,22 @@ interface TransactionsViewProps {
   onRefresh: () => void;
   onOpenNew: (type: TransactionType) => void;
   onOpenEdit: (tx: Transaction) => void;
+  startDate?: string;
+  endDate?: string;
+  onDateChange?: (start: string, end: string) => void;
 }
 
 export const TransactionsView: React.FC<TransactionsViewProps> = ({
   categories,
   accounts,
+  members,
   refreshTrigger,
   onRefresh,
   onOpenNew,
   onOpenEdit,
+  startDate: propStartDate,
+  endDate: propEndDate,
+  onDateChange,
 }) => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,8 +52,11 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
   const [categoryId, setCategoryId] = useState<string>('');
   const [memberRole, setMemberRole] = useState<string>('');
   const [accountId, setAccountId] = useState<string>('');
-  const [startDate, setStartDate] = useState<string>('2026-09-01');
-  const [endDate, setEndDate] = useState<string>('2026-11-30');
+  const [internalStartDate, setInternalStartDate] = useState<string>('2026-11-01');
+  const [internalEndDate, setInternalEndDate] = useState<string>('2026-11-30');
+
+  const startDate = propStartDate || internalStartDate;
+  const endDate = propEndDate || internalEndDate;
 
   useEffect(() => {
     let active = true;
@@ -181,14 +191,18 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
             <input
               type="date"
               value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
+              onChange={(e) =>
+                onDateChange ? onDateChange(e.target.value, endDate) : setInternalStartDate(e.target.value)
+              }
               className="px-2 py-1 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800"
             />
             <span>to</span>
             <input
               type="date"
               value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
+              onChange={(e) =>
+                onDateChange ? onDateChange(startDate, e.target.value) : setInternalEndDate(e.target.value)
+              }
               className="px-2 py-1 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800"
             />
           </div>

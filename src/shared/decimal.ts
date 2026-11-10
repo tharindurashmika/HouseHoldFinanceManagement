@@ -167,3 +167,63 @@ export function formatMonthYearSL(year: number, month: number): string {
   return `${mmm} ${year}`;
 }
 
+/**
+ * Returns today's date formatted as "YYYY-MM-DD" in local time
+ */
+export function getTodayDateString(): string {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+export type DateRangePreset =
+  | 'CURRENT_MONTH'
+  | 'PREV_MONTH'
+  | 'LAST_30_DAYS'
+  | 'LAST_3M'
+  | 'LAST_6M'
+  | 'CURRENT_YEAR'
+  | 'CUSTOM';
+
+export function getDateRangeForPreset(preset: DateRangePreset): { startDate: string; endDate: string } {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth(); // 0-indexed
+
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const toStr = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+  if (preset === 'CURRENT_MONTH') {
+    const start = new Date(year, month, 1);
+    const end = new Date(year, month + 1, 0);
+    return { startDate: toStr(start), endDate: toStr(end) };
+  } else if (preset === 'PREV_MONTH') {
+    const start = new Date(year, month - 1, 1);
+    const end = new Date(year, month, 0);
+    return { startDate: toStr(start), endDate: toStr(end) };
+  } else if (preset === 'LAST_30_DAYS') {
+    const end = now;
+    const start = new Date(now.getTime() - 29 * 24 * 60 * 60 * 1000);
+    return { startDate: toStr(start), endDate: toStr(end) };
+  } else if (preset === 'LAST_3M') {
+    const start = new Date(year, month - 2, 1);
+    const end = new Date(year, month + 1, 0);
+    return { startDate: toStr(start), endDate: toStr(end) };
+  } else if (preset === 'LAST_6M') {
+    const start = new Date(year, month - 5, 1);
+    const end = new Date(year, month + 1, 0);
+    return { startDate: toStr(start), endDate: toStr(end) };
+  } else if (preset === 'CURRENT_YEAR') {
+    return {
+      startDate: `${year}-01-01`,
+      endDate: `${year}-12-31`,
+    };
+  }
+  const start = new Date(year, month, 1);
+  const end = new Date(year, month + 1, 0);
+  return { startDate: toStr(start), endDate: toStr(end) };
+}
+
+

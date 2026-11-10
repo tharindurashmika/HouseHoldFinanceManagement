@@ -23,6 +23,8 @@ import { api, setActiveUserIdHeader, type HouseholdContextResponse } from './api
 import { getSupabaseConfig } from '../server/db/pool';
 import { TransactionModal } from './components/TransactionModal';
 import { SupabaseModal } from './components/SupabaseModal';
+import { CommonDateRangeFilter } from './components/CommonDateRangeFilter';
+import { getDateRangeForPreset, type DateRangePreset } from '../shared/decimal';
 import { DashboardView } from './views/DashboardView';
 import { TransactionsView } from './views/TransactionsView';
 import { IncomeView } from './views/IncomeView';
@@ -125,6 +127,53 @@ export const App: React.FC = () => {
   const [txModalOpen, setTxModalOpen] = useState<boolean>(false);
   const [txModalInitialType, setTxModalInitialType] = useState<TransactionType>('EXPENSE');
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
+
+  // Global Shared Date Range Filter state across all views
+  const [commonDateRange, setCommonDateRange] = useState<{
+    startDate: string;
+    endDate: string;
+    preset: DateRangePreset;
+  }>(() => {
+    try {
+      const saved = localStorage.getItem('hf_common_date_filter');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.startDate && parsed.endDate) {
+          return parsed;
+        }
+      }
+    } catch {
+      // fallback
+    }
+    const def = getDateRangeForPreset('CURRENT_MONTH');
+    return {
+      startDate: def.startDate,
+      endDate: def.endDate,
+      preset: 'CURRENT_MONTH',
+    };
+  });
+
+  const handleCommonDateRangeChange = useCallback(
+    (startDate: string, endDate: string, preset: DateRangePreset) => {
+      setCommonDateRange({ startDate, endDate, preset });
+      try {
+        localStorage.setItem(
+          'hf_common_date_filter',
+          JSON.stringify({ startDate, endDate, preset })
+        );
+      } catch {
+        // ignore
+      }
+    },
+    []
+  );
+
+  const handleSimpleDateChange = useCallback(
+    (startDate: string, endDate: string) => {
+      handleCommonDateRangeChange(startDate, endDate, 'CUSTOM');
+    },
+    [handleCommonDateRangeChange]
+  );
 
   useEffect(() => {
     const root = document.documentElement;
@@ -427,9 +476,23 @@ export const App: React.FC = () => {
 
         {/* Active View Content (with bottom padding on mobile for iPhone Bottom Tab Bar) */}
         <main className="flex-1 p-3.5 sm:p-6 pb-24 lg:pb-6 max-w-7xl w-full mx-auto">
+          {/* Common Date Range Filter Bar across analytics and ledger pages */}
+          {['dashboard', 'transactions', 'income', 'expenses', 'budgets', 'reports'].includes(activeTab) && (
+            <div className="mb-5">
+              <CommonDateRangeFilter
+                startDate={commonDateRange.startDate}
+                endDate={commonDateRange.endDate}
+                preset={commonDateRange.preset}
+                onDateRangeChange={handleCommonDateRangeChange}
+              />
+            </div>
+          )}
+
           {activeTab === 'dashboard' && (
             <DashboardView
               refreshTrigger={refreshTrigger}
+              startDate={commonDateRange.startDate}
+              endDate={commonDateRange.endDate}
               onQuickAdd={handleOpenNewTx}
               onNavigate={setActiveTab}
             />
@@ -444,12 +507,17 @@ export const App: React.FC = () => {
               onRefresh={triggerRefresh}
               onOpenNew={handleOpenNewTx}
               onOpenEdit={handleOpenEditTx}
+              startDate={commonDateRange.startDate}
+              endDate={commonDateRange.endDate}
+              onDateChange={handleSimpleDateChange}
             />
           )}
 
           {activeTab === 'income' && (
             <IncomeView
               refreshTrigger={refreshTrigger}
+              startDate={commonDateRange.startDate}
+              endDate={commonDateRange.endDate}
               onOpenNew={handleOpenNewTx}
               onOpenEdit={handleOpenEditTx}
             />
@@ -459,6 +527,8 @@ export const App: React.FC = () => {
             <ExpensesView
               categories={categories}
               refreshTrigger={refreshTrigger}
+              startDate={commonDateRange.startDate}
+              endDate={commonDateRange.endDate}
               onOpenNew={handleOpenNewTx}
               onOpenEdit={handleOpenEditTx}
             />
@@ -469,6 +539,7 @@ export const App: React.FC = () => {
               categories={categories}
               refreshTrigger={refreshTrigger}
               onRefresh={triggerRefresh}
+              startDate={commonDateRange.startDate}
             />
           )}
 
@@ -506,7 +577,13 @@ export const App: React.FC = () => {
           )}
 
           {activeTab === 'reports' && (
-            <ReportsView categories={categories} refreshTrigger={refreshTrigger} />
+            <ReportsView
+              categories={categories}
+              refreshTrigger={refreshTrigger}
+              startDate={commonDateRange.startDate}
+              endDate={commonDateRange.endDate}
+              onDateChange={handleSimpleDateChange}
+            />
           )}
 
           {activeTab === 'settings' && (

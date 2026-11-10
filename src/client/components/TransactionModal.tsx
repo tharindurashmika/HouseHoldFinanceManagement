@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Plus, Trash2, Split, ArrowRightLeft, TrendingUp, TrendingDown } from 'lucide-react';
 import { api } from '../api';
-import { addMoney, formatLKR, mulMoney, toMoneyString } from '../../shared/decimal';
+import { addMoney, formatLKR, getTodayDateString, mulMoney, toMoneyString } from '../../shared/decimal';
 import type {
   Account,
   Category,
@@ -36,7 +36,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   editingTransaction = null,
 }) => {
   const [transactionType, setTransactionType] = useState<TransactionType>(initialType);
-  const [transactionDate, setTransactionDate] = useState<string>('2026-11-03');
+  const [transactionDate, setTransactionDate] = useState<string>(() => getTodayDateString());
   const [description, setDescription] = useState<string>('');
   const [categoryId, setCategoryId] = useState<string>('');
   const [subcategoryId, setSubcategoryId] = useState<string>('');
@@ -106,7 +106,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       );
     } else {
       setTransactionType(initialType);
-      setTransactionDate('2026-11-03');
+      setTransactionDate(getTodayDateString());
       setDescription('');
       const defCat = categories.find((c) =>
         initialType === 'INCOME' ? c.type === 'INCOME' : c.type === 'EXPENSE'

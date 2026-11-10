@@ -7,6 +7,9 @@ import type { Category } from '../../shared/types';
 interface ReportsViewProps {
   categories: Category[];
   refreshTrigger: number;
+  startDate?: string;
+  endDate?: string;
+  onDateChange?: (start: string, end: string) => void;
 }
 
 const REPORT_TYPES = [
@@ -20,10 +23,19 @@ const REPORT_TYPES = [
   { id: 'SAVINGS', label: '8. Savings & Financial Goals Report' },
 ];
 
-export const ReportsView: React.FC<ReportsViewProps> = ({ categories, refreshTrigger }) => {
+export const ReportsView: React.FC<ReportsViewProps> = ({
+  categories,
+  refreshTrigger,
+  startDate: propStartDate,
+  endDate: propEndDate,
+  onDateChange,
+}) => {
   const [reportType, setReportType] = useState<string>('MONTHLY_FINANCIAL');
-  const [startDate, setStartDate] = useState<string>('2026-11-01');
-  const [endDate, setEndDate] = useState<string>('2026-11-30');
+  const [internalStartDate, setInternalStartDate] = useState<string>('2026-11-01');
+  const [internalEndDate, setInternalEndDate] = useState<string>('2026-11-30');
+
+  const startDate = propStartDate || internalStartDate;
+  const endDate = propEndDate || internalEndDate;
   const [categoryId, setCategoryId] = useState<string>('');
   const [memberRole, setMemberRole] = useState<string>('');
   const [transactionType, setTransactionType] = useState<string>('');
@@ -143,8 +155,12 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ categories, refreshTri
                 const rt = e.target.value;
                 setReportType(rt);
                 if (rt === 'YEARLY_FINANCIAL') {
-                  setStartDate('2026-01-01');
-                  setEndDate('2026-12-31');
+                  if (onDateChange) {
+                    onDateChange('2026-01-01', '2026-12-31');
+                  } else {
+                    setInternalStartDate('2026-01-01');
+                    setInternalEndDate('2026-12-31');
+                  }
                 }
               }}
               className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 font-semibold"
@@ -162,7 +178,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ categories, refreshTri
             <input
               type="date"
               value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
+              onChange={(e) =>
+                onDateChange ? onDateChange(e.target.value, endDate) : setInternalStartDate(e.target.value)
+              }
               className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800"
             />
           </div>
@@ -172,7 +190,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ categories, refreshTri
             <input
               type="date"
               value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
+              onChange={(e) =>
+                onDateChange ? onDateChange(startDate, e.target.value) : setInternalEndDate(e.target.value)
+              }
               className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800"
             />
           </div>

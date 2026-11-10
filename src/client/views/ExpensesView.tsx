@@ -7,6 +7,8 @@ import type { Category, Transaction, TransactionType } from '../../shared/types'
 interface ExpensesViewProps {
   categories: Category[];
   refreshTrigger: number;
+  startDate?: string;
+  endDate?: string;
   onOpenNew: (type: TransactionType) => void;
   onOpenEdit: (tx: Transaction) => void;
 }
@@ -14,6 +16,8 @@ interface ExpensesViewProps {
 export const ExpensesView: React.FC<ExpensesViewProps> = ({
   categories,
   refreshTrigger,
+  startDate,
+  endDate,
   onOpenNew,
   onOpenEdit,
 }) => {
@@ -21,20 +25,19 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
   const [selectedMonth, setSelectedMonth] = useState<string>('2026-11');
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('ALL');
 
-  useEffect(() => {
-    const [y, m] = selectedMonth.split('-').map(Number);
-    const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
-    const startDate = `${selectedMonth}-01`;
-    const endDate = `${selectedMonth}-${String(lastDay).padStart(2, '0')}`;
+  const effectiveMonth = startDate ? startDate.slice(0, 7) : selectedMonth;
+  const effectiveStartDate = startDate || `${selectedMonth}-01`;
+  const effectiveEndDate = endDate || `${selectedMonth}-31`;
 
+  useEffect(() => {
     api
       .getTransactions({
         transactionType: 'EXPENSE',
-        startDate,
-        endDate,
+        startDate: effectiveStartDate,
+        endDate: effectiveEndDate,
       })
       .then((res) => setExpenses(res.transactions));
-  }, [selectedMonth, refreshTrigger]);
+  }, [effectiveStartDate, effectiveEndDate, refreshTrigger]);
 
   const expenseCategories = categories.filter((c) => c.type === 'EXPENSE');
 
@@ -161,7 +164,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                   </div>
                 ) : (
                   <div className="text-xs text-slate-400 italic pt-2 border-t border-slate-100 dark:border-slate-800">
-                    No expenses recorded in {selectedMonth}
+                    No expenses recorded in {effectiveMonth}
                   </div>
                 )}
               </div>
@@ -184,8 +187,8 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
             <ShoppingBag className="w-4 h-4 text-rose-500" />
             <h3 className="text-sm font-bold text-slate-900 dark:text-white">
               {selectedCategoryId === 'ALL'
-                ? `All Expenses in ${selectedMonth}`
-                : `Filtered Category Expenses (${selectedMonth})`}
+                ? `All Expenses in ${effectiveMonth}`
+                : `Filtered Category Expenses (${effectiveMonth})`}
             </h3>
           </div>
           {selectedCategoryId !== 'ALL' && (

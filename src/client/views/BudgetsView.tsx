@@ -8,15 +8,20 @@ interface BudgetsViewProps {
   categories: Category[];
   refreshTrigger: number;
   onRefresh: () => void;
+  startDate?: string;
 }
 
 export const BudgetsView: React.FC<BudgetsViewProps> = ({
   categories,
   refreshTrigger,
   onRefresh,
+  startDate,
 }) => {
-  const [year, setYear] = useState<number>(2026);
-  const [month, setMonth] = useState<number>(11);
+  const [internalYear, setInternalYear] = useState<number>(2026);
+  const [internalMonth, setInternalMonth] = useState<number>(11);
+
+  const year = startDate ? Number(startDate.slice(0, 4)) : internalYear;
+  const month = startDate ? Number(startDate.slice(5, 7)) : internalMonth;
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [summary, setSummary] = useState<{
     totalBudgetedLkr: string;
@@ -88,8 +93,8 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
             value={`${year}-${String(month).padStart(2, '0')}`}
             onChange={(e) => {
               const [y, m] = e.target.value.split('-').map(Number);
-              setYear(y);
-              setMonth(m);
+              setInternalYear(y);
+              setInternalMonth(m);
             }}
             className="px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold"
           >

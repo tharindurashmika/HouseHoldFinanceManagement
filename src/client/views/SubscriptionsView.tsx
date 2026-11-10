@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Cpu, Plus, CheckCircle2, Globe, CreditCard } from 'lucide-react';
 import { api } from '../api';
-import { addMoney, formatDateSL, formatLKR } from '../../shared/decimal';
+import { addMoney, formatDateSL, formatLKR, getTodayDateString } from '../../shared/decimal';
 import type { Account, Category, Subscription, User } from '../../shared/types';
 
 interface SubscriptionsViewProps {
@@ -38,7 +38,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
   const [defaultAccountId, setDefaultAccountId] = useState(accounts[0]?.id || '');
 
   // Pay Subscription modal state
-  const [paidDate, setPaidDate] = useState('2026-11-03');
+  const [paidDate, setPaidDate] = useState(() => getTodayDateString());
   const [actualLkrCharged, setActualLkrCharged] = useState('');
   const [paidSourceAccountId, setPaidSourceAccountId] = useState('');
   const [paidByUserId, setPaidByUserId] = useState(activeUserId);

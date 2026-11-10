@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, CheckCircle2, AlertCircle, HelpCircle, History, Landmark, Wallet, RefreshCw } from 'lucide-react';
 import { api } from '../api';
-import { compareMoney, formatLKR, subMoney, toMoneyString } from '../../shared/decimal';
+import { compareMoney, formatLKR, getTodayDateString, subMoney, toMoneyString } from '../../shared/decimal';
 import type { Account, AccountReconciliation } from '../../shared/types';
 
 interface AccountReconcileModalProps {
@@ -27,7 +27,7 @@ export const AccountReconcileModal: React.FC<AccountReconcileModalProps> = ({
 
   const [accountId, setAccountId] = useState<string>(initialAccountId || eligibleAccounts[0]?.id || '');
   const [actualStatementBalance, setActualStatementBalance] = useState<string>('');
-  const [reconciliationDate, setReconciliationDate] = useState<string>('2026-11-03');
+  const [reconciliationDate, setReconciliationDate] = useState<string>(() => getTodayDateString());
   const [notes, setNotes] = useState<string>('');
   const [reconciliations, setReconciliations] = useState<AccountReconciliation[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);

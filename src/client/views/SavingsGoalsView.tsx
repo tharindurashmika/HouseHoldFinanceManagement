@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { PiggyBank, Plus, Target, Wallet, TrendingUp } from 'lucide-react';
 import { api } from '../api';
-import { addMoney, formatDateSL, formatLKR, pctOf, subMoney } from '../../shared/decimal';
+import { addMoney, formatDateSL, formatLKR, getTodayDateString, pctOf, subMoney } from '../../shared/decimal';
 import type { Account, SavingsGoal, User } from '../../shared/types';
 
 interface SavingsGoalsViewProps {
@@ -34,7 +34,7 @@ export const SavingsGoalsView: React.FC<SavingsGoalsViewProps> = ({
   const [linkedAccountId, setLinkedAccountId] = useState(accounts[0]?.id || '');
 
   // Contribution modal state
-  const [contribDate, setContribDate] = useState('2026-11-03');
+  const [contribDate, setContribDate] = useState(() => getTodayDateString());
   const [contribAmount, setContribAmount] = useState('25000.00');
   const [contribType, setContribType] = useState<'DEPOSIT' | 'WITHDRAWAL'>('DEPOSIT');
   const [contribUserId, setContribUserId] = useState(activeUserId);
